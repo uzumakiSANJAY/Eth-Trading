@@ -1,0 +1,30 @@
+{
+  "name": "eth-trading-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ethereum Trading Analysis and Suggestion Platform",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "dev:backend": "cd backend && npm run start:dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:ml": "cd ml-service && uvicorn main:app --reload --host 0.0.0.0 --port 8001",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+  },
+  "keywords": [
+    "ethereum",
+    "trading",
+    "analysis",
+    "machine-learning",
+    "technical-indicators"
+  ],
+  "author": "",
+  "license": "MIT"
+}

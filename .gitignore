@@ -14,6 +14,7 @@ __pycache__/
 .Python
 pip-log.txt
 pip-delete-this-directory.txt
+.pytest_cache/
 
 # Environment files
 .env
@@ -41,7 +42,6 @@ out/
 # Testing
 coverage/
 .nyc_output/
-.pytest_cache/
 htmlcov/
 
 # IDE
@@ -49,6 +49,7 @@ htmlcov/
 .vscode/
 *.swp
 *.swo
+*~
 *.sublime-workspace
 *.sublime-project
 
@@ -64,17 +65,30 @@ Desktop.ini
 docker-compose.override.yml
 .docker/
 
+# Database
+*.db
+*.sqlite
+pgdata/
+
 # ML/Data
 *.h5
 *.pkl
 *.model
 *.weights
+*.joblib
 datasets/
 models/
 checkpoints/
+ml-service/models/*.pkl
+ml-service/models/*.joblib
+
+# Cache
+.cache/
+*.cache
+tmp/
+temp/
+redis-data/
 
 # Misc
 *.local
-.cache/
-tmp/
-temp/
+package-lock.json
