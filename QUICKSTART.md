@@ -95,7 +95,7 @@ npm install
 
 ```bash
 # Terminal 1: PostgreSQL
-docker run -d -p 5432:5432 -e POSTGRES_DB=eth_trading -e POSTGRES_USER=eth_user -e POSTGRES_PASSWORD=eth_password postgres:15-alpine
+docker run -d -p 5432:5432 -e POSTGRES_DB=eth_trading -e POSTGRES_USER=user -e POSTGRES_PASSWORD=12345 postgres:15-alpine
 
 # Terminal 2: Redis
 docker run -d -p 6379:6379 redis:7-alpine
