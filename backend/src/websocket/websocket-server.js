@@ -7,6 +7,10 @@ let priceUpdateInterval = null;
 function initWebSocket(io) {
   const exchange = new ccxt.binance({
     enableRateLimit: true,
+    options: {
+      adjustForTimeDifference: true,
+      recvWindow: 5000,
+    },
   });
 
   io.on('connection', (socket) => {

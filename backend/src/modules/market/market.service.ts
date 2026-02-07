@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -6,9 +6,11 @@ import * as ccxt from 'ccxt';
 import { OhlcvEntity, Timeframe } from '../../entities/ohlcv.entity';
 
 @Injectable()
-export class MarketService {
+export class MarketService implements OnModuleInit {
   private readonly logger = new Logger(MarketService.name);
   private exchange: ccxt.binance;
+  private timeSynced = false;
+  private lastSyncTime = 0;
 
   constructor(
     @InjectRepository(OhlcvEntity)
@@ -18,10 +20,33 @@ export class MarketService {
       apiKey: process.env.BINANCE_API_KEY,
       secret: process.env.BINANCE_API_SECRET,
       enableRateLimit: true,
+      options: {
+        recvWindow: 5000,
+      },
     });
   }
 
+  async onModuleInit() {
+    await this.ensureTimeSync();
+  }
+
+  private async ensureTimeSync(): Promise<void> {
+    const now = Date.now();
+    if (!this.timeSynced || now - this.lastSyncTime > 30 * 60 * 1000) {
+      try {
+        const serverTime = await this.exchange.fetchTime();
+        this.exchange.options.timeDifference = now - serverTime;
+        this.timeSynced = true;
+        this.lastSyncTime = now;
+        this.logger.log(`Binance time synced, offset: ${this.exchange.options.timeDifference}ms`);
+      } catch (error) {
+        this.logger.error(`Failed to sync Binance time: ${error.message}`);
+      }
+    }
+  }
+
   async getCurrentPrice(symbol: string = 'ETH/USDT'): Promise<number> {
+    await this.ensureTimeSync();
     try {
       const ticker = await this.exchange.fetchTicker(symbol);
       return ticker.last;
@@ -36,6 +61,7 @@ export class MarketService {
     timeframe: Timeframe = Timeframe.ONE_HOUR,
     limit: number = 500,
   ): Promise<OhlcvEntity[]> {
+    await this.ensureTimeSync();
     try {
       const ohlcvData = await this.exchange.fetchOHLCV(
         symbol,

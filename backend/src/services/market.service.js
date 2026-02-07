@@ -9,7 +9,28 @@ class MarketService {
       apiKey: process.env.BINANCE_API_KEY,
       secret: process.env.BINANCE_API_SECRET,
       enableRateLimit: true,
+      options: {
+        recvWindow: 5000,
+      },
     });
+    this._timeSynced = false;
+    this._lastSyncTime = 0;
+  }
+
+  async _ensureTimeSync() {
+    const now = Date.now();
+    // Sync on first call and every 30 minutes
+    if (!this._timeSynced || now - this._lastSyncTime > 30 * 60 * 1000) {
+      try {
+        const serverTime = await this.exchange.fetchTime();
+        this.exchange.options.timeDifference = now - serverTime;
+        this._timeSynced = true;
+        this._lastSyncTime = now;
+        logger.info(`Binance time synced, offset: ${this.exchange.options.timeDifference}ms`);
+      } catch (error) {
+        logger.error(`Failed to sync Binance time: ${error.message}`);
+      }
+    }
   }
 
   async getCurrentPrice(symbol = 'ETH/USDT') {
@@ -17,6 +38,7 @@ class MarketService {
     const cached = await getCache(cacheKey);
     if (cached) return cached;
 
+    await this._ensureTimeSync();
     try {
       const ticker = await this.exchange.fetchTicker(symbol);
       const price = ticker.last;
@@ -29,6 +51,7 @@ class MarketService {
   }
 
   async fetchAndStoreOhlcv(symbol = 'ETH/USDT', timeframe = '1h', limit = 500) {
+    await this._ensureTimeSync();
     try {
       const ohlcvData = await this.exchange.fetchOHLCV(symbol, timeframe, undefined, limit);
       const symbolFormatted = symbol.replace('/', '');
