@@ -37,6 +37,9 @@ const SignalCard = ({ signal }) => {
   };
 
   const style = getSignalStyle(signal.signalType);
+  const confidence = Number(signal.confidence) || 0;
+  const entryPrice = parseFloat(signal.entryPrice) || 0;
+  const stopLoss = parseFloat(signal.stopLoss) || 0;
 
   return (
     <div className={`card border-l-4 ${style.border}`}>
@@ -57,11 +60,11 @@ const SignalCard = ({ signal }) => {
           <div className="flex items-center space-x-2">
             <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className={`h-full ${signal.confidence > 75 ? 'bg-success-500' : signal.confidence > 60 ? 'bg-yellow-500' : 'bg-gray-400'}`}
-                style={{ width: `${signal.confidence}%` }}
+                className={`h-full ${confidence > 75 ? 'bg-success-500' : confidence > 60 ? 'bg-yellow-500' : 'bg-gray-400'}`}
+                style={{ width: `${confidence}%` }}
               />
             </div>
-            <span className="text-lg font-bold text-gray-900">{signal.confidence.toFixed(0)}%</span>
+            <span className="text-lg font-bold text-gray-900">{confidence.toFixed(0)}%</span>
           </div>
         </div>
       </div>
@@ -72,7 +75,7 @@ const SignalCard = ({ signal }) => {
             <Target className="w-4 h-4 text-primary-600" />
             <p className="text-xs text-gray-500 uppercase">Entry Price</p>
           </div>
-          <p className="text-xl font-bold text-gray-900">${parseFloat(signal.entryPrice).toFixed(2)}</p>
+          <p className="text-xl font-bold text-gray-900">${entryPrice.toFixed(2)}</p>
           {signal.entryZoneMin && signal.entryZoneMax && (
             <p className="text-xs text-gray-500 mt-1">
               Zone: ${parseFloat(signal.entryZoneMin).toFixed(2)} - ${parseFloat(signal.entryZoneMax).toFixed(2)}
@@ -86,10 +89,10 @@ const SignalCard = ({ signal }) => {
             <p className="text-xs text-gray-500 uppercase">Stop Loss</p>
           </div>
           <p className="text-xl font-bold text-danger-600">
-            ${parseFloat(signal.stopLoss).toFixed(2)}
+            ${stopLoss.toFixed(2)}
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            {Math.abs(((signal.stopLoss - signal.entryPrice) / signal.entryPrice) * 100).toFixed(2)}% risk
+            {entryPrice > 0 ? Math.abs(((stopLoss - entryPrice) / entryPrice) * 100).toFixed(2) : '0.00'}% risk
           </p>
         </div>
 

@@ -7,7 +7,14 @@ const { setCache, getCache } = require('../database/config/redis');
 class AnalysisService {
   async calculateAndStoreIndicators(symbol = 'ETHUSDT', timeframe = '1h') {
     try {
-      const ohlcvData = await marketService.getHistoricalData(symbol, timeframe, 200);
+      let ohlcvData = await marketService.getHistoricalData(symbol, timeframe, 200);
+
+      if (ohlcvData.length < 50) {
+        // Try fetching fresh data from Binance
+        const symbolFormatted = symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
+        await marketService.fetchAndStoreOhlcv(symbolFormatted, timeframe, 500);
+        ohlcvData = await marketService.getHistoricalData(symbol, timeframe, 200);
+      }
 
       if (ohlcvData.length < 50) {
         throw new Error('Insufficient data for indicator calculation');
@@ -102,6 +109,9 @@ class AnalysisService {
     });
 
     if (!indicator) {
+      // Fetch fresh data from Binance before calculating
+      const symbolFormatted = symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
+      await marketService.fetchAndStoreOhlcv(symbolFormatted, timeframe, 500);
       indicator = await this.calculateAndStoreIndicators(symbol, timeframe);
     }
 
