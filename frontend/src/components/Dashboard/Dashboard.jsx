@@ -3,6 +3,7 @@ import { RefreshCw, Zap } from 'lucide-react';
 import TradingViewChart from '../Chart/TradingViewChart';
 import IndicatorsPanel from '../Indicators/IndicatorsPanel';
 import SignalCard from '../Signals/SignalCard';
+import MultiTimeframePanel from '../MultiTimeframe/MultiTimeframePanel';
 import { marketAPI, analysisAPI, signalsAPI } from '../../services/api';
 import { useWebSocketStore } from '../../services/websocket';
 
@@ -14,6 +15,8 @@ const Dashboard = () => {
   const [timeframe, setTimeframe] = useState('1h');
   const [loading, setLoading] = useState(false);
   const [generatingSignal, setGeneratingSignal] = useState(false);
+  const [mtfAnalysis, setMtfAnalysis] = useState(null);
+  const [loadingMtf, setLoadingMtf] = useState(false);
 
   const { currentPrice, isConnected } = useWebSocketStore();
 
@@ -78,6 +81,19 @@ const Dashboard = () => {
       alert('Failed to generate signal. Please try again.');
     } finally {
       setGeneratingSignal(false);
+    }
+  };
+
+  const handleMultiTimeframeAnalysis = async () => {
+    setLoadingMtf(true);
+    try {
+      const response = await analysisAPI.getMultiTimeframeAnalysis('ETHUSDT');
+      setMtfAnalysis(response.data.data);
+    } catch (error) {
+      console.error('Error fetching multi-timeframe analysis:', error);
+      alert('Failed to fetch multi-timeframe analysis. Please try again.');
+    } finally {
+      setLoadingMtf(false);
     }
   };
 
@@ -153,6 +169,31 @@ const Dashboard = () => {
               technical indicators, candlestick patterns, and AI prediction.
             </p>
           </div>
+
+          <div className="card bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Multi-Timeframe Analysis
+                </h3>
+                <p className="text-sm text-gray-500">
+                  Combine 15m, 1h, 4h, and 1d into one unified signal
+                </p>
+              </div>
+              <button
+                onClick={handleMultiTimeframeAnalysis}
+                disabled={loadingMtf || loading}
+                className="btn-primary flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Zap className={`w-4 h-4 ${loadingMtf ? 'animate-pulse' : ''}`} />
+                <span>
+                  {loadingMtf ? 'Analyzing All Timeframes...' : 'Analyze All Timeframes'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {mtfAnalysis && <MultiTimeframePanel data={mtfAnalysis} />}
 
           <SignalCard signal={signal} />
         </div>

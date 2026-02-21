@@ -103,6 +103,16 @@ const IndicatorsPanel = ({ indicators, analysis }) => {
           </p>
         </div>
 
+        {indicators.obv && (
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500 uppercase mb-1">OBV</p>
+            <p className="text-xl font-bold text-gray-900">
+              {parseFloat(indicators.obv).toFixed(0)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Volume Flow</p>
+          </div>
+        )}
+
         <div className="p-3 bg-gray-50 rounded-lg col-span-2">
           <p className="text-xs text-gray-500 uppercase mb-1">Bollinger Bands</p>
           <div className="flex justify-between items-center">

@@ -1,4 +1,5 @@
 const analysisService = require('../services/analysis.service');
+const multiTimeframeService = require('../services/multiTimeframe.service');
 
 class AnalysisController {
   async getIndicators(req, res, next) {
@@ -32,6 +33,19 @@ class AnalysisController {
         success: true,
         message: 'Indicators calculated successfully',
         data: indicators,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getMultiTimeframeAnalysis(req, res, next) {
+    try {
+      const { symbol = 'ETHUSDT' } = req.query;
+      const result = await multiTimeframeService.analyzeMultiTimeframe(symbol);
+      res.json({
+        success: true,
+        data: result,
       });
     } catch (error) {
       next(error);

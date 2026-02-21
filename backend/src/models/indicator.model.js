@@ -71,6 +71,14 @@ const Indicator = sequelize.define('Indicator', {
     type: DataTypes.DECIMAL(18, 8),
     allowNull: true,
   },
+  obv: {
+    type: DataTypes.DECIMAL(24, 4),
+    allowNull: true,
+  },
+  obvSma: {
+    type: DataTypes.DECIMAL(24, 4),
+    allowNull: true,
+  },
 }, {
   tableName: 'indicators',
   indexes: [

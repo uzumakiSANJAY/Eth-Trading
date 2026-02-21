@@ -1,4 +1,4 @@
-const { RSI, MACD, EMA, ATR, BollingerBands } = require('technicalindicators');
+const { RSI, MACD, EMA, ATR, BollingerBands, OBV } = require('technicalindicators');
 const { Indicator } = require('../models');
 const marketService = require('./market.service');
 const logger = require('../utils/logger');
@@ -50,6 +50,10 @@ class AnalysisService {
         stdDev: 2,
       });
 
+      const obvValues = OBV.calculate({ close: closes, volume: volumes });
+      const obvSmaLength = Math.min(10, obvValues.length);
+      const obvSma = obvValues.slice(-obvSmaLength).reduce((a, b) => a + b, 0) / obvSmaLength;
+
       const vwap = this.calculateVWAP(ohlcvData.slice(-20));
 
       const latestCandle = ohlcvData[ohlcvData.length - 1];
@@ -73,6 +77,8 @@ class AnalysisService {
         bollingerUpper: latestBB?.upper || null,
         bollingerMiddle: latestBB?.middle || null,
         bollingerLower: latestBB?.lower || null,
+        obv: obvValues[obvValues.length - 1] || null,
+        obvSma: obvSma || null,
       });
 
       logger.info(`Calculated indicators for ${symbol} ${timeframe}`);
@@ -177,6 +183,21 @@ class AnalysisService {
         details.bollinger = 'Price above upper band - Potential reversal';
       } else {
         details.bollinger = 'Price within bands';
+      }
+    }
+
+    if (indicator.obv !== null && indicator.obv !== undefined &&
+        indicator.obvSma !== null && indicator.obvSma !== undefined) {
+      const obv = parseFloat(indicator.obv);
+      const obvSmaVal = parseFloat(indicator.obvSma);
+      if (obvSmaVal !== 0 && obv > obvSmaVal * 1.05) {
+        bullishScore += 1;
+        details.obv = { value: obv, signal: 'OBV above SMA - Volume confirming uptrend' };
+      } else if (obvSmaVal !== 0 && obv < obvSmaVal * 0.95) {
+        bearishScore += 1;
+        details.obv = { value: obv, signal: 'OBV below SMA - Volume confirming downtrend' };
+      } else {
+        details.obv = { value: obv, signal: 'OBV neutral - No clear volume trend' };
       }
     }
 

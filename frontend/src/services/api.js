@@ -38,6 +38,9 @@ export const analysisAPI = {
 
   calculateIndicators: (symbol = 'ETHUSDT', timeframe = '1h') =>
     api.post('/api/analysis/calculate', null, { params: { symbol, timeframe } }),
+
+  getMultiTimeframeAnalysis: (symbol = 'ETHUSDT') =>
+    api.get('/api/analysis/multi-timeframe', { params: { symbol }, timeout: 30000 }),
 };
 
 export const patternsAPI = {
