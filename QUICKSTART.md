@@ -83,6 +83,8 @@ cd backend
 npm install
 
 # ML Service
+python3 -m venv venv 
+source venv/bin/activate 
 cd ../ml-service
 pip install -r requirements.txt
 
