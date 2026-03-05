@@ -6,14 +6,14 @@ services:
     container_name: eth-trading-postgres
     environment:
       POSTGRES_DB: eth_trading
-      POSTGRES_USER: eth_user
-      POSTGRES_PASSWORD: eth_password
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: "12345"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U eth_user -d eth_trading"]
+      test: ["CMD-SHELL", "pg_isready -U user -d eth_trading"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,7 +37,7 @@ services:
       dockerfile: Dockerfile
     container_name: eth-trading-backend
     environment:
-      DATABASE_URL: postgresql://eth_user:eth_password@postgres:5432/eth_trading
+      DATABASE_URL: postgresql://user:12345@postgres:5432/eth_trading
       REDIS_URL: redis://redis:6379
       ML_SERVICE_URL: http://ml-service:8001
       PORT: 3001
@@ -61,7 +61,7 @@ services:
       dockerfile: Dockerfile
     container_name: eth-trading-ml
     environment:
-      DATABASE_URL: postgresql://eth_user:eth_password@postgres:5432/eth_trading
+      DATABASE_URL: postgresql://user:12345@postgres:5432/eth_trading
       MODEL_PATH: /app/models
     ports:
       - "8001:8001"
