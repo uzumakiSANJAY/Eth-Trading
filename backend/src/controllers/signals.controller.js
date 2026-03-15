@@ -1,4 +1,5 @@
 const signalService = require('../services/signal.service');
+const newsService = require('../services/news.service');
 
 class SignalsController {
   async generateSignal(req, res, next) {
@@ -44,6 +45,14 @@ class SignalsController {
           signals,
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+  async getNewsSentiment(req, res, next) {
+    try {
+      const sentiment = await newsService.getNewsSentiment();
+      res.json({ success: true, data: sentiment });
     } catch (error) {
       next(error);
     }

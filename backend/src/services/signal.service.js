@@ -3,6 +3,7 @@ const { Signal } = require('../models');
 const marketService = require('./market.service');
 const analysisService = require('./analysis.service');
 const patternService = require('./pattern.service');
+const newsService = require('./news.service');
 const logger = require('../utils/logger');
 
 class SignalService {
@@ -23,6 +24,14 @@ class SignalService {
       const patterns = await patternService.getRecentPatterns(symbol, timeframe, 5);
 
       const volumeAnalysis = await marketService.getVolumeAnalysis(symbol, timeframe);
+
+      // News sentiment - fetched in parallel, cached 30 min, minimal Gemini tokens
+      let newsSentiment = null;
+      try {
+        newsSentiment = await newsService.getNewsSentiment();
+      } catch (newsErr) {
+        logger.warn(`News sentiment unavailable: ${newsErr.message}`);
+      }
 
       let mlPrediction = null;
       try {
@@ -53,7 +62,8 @@ class SignalService {
         indicatorAnalysis,
         patterns,
         volumeAnalysis,
-        mlPrediction
+        mlPrediction,
+        newsSentiment
       );
 
       if (signalDecision.signalType === 'HOLD') {
@@ -89,6 +99,14 @@ class SignalService {
           })),
           mlPrediction,
           volumeAnalysis: volumeAnalysis.volumeRatio > 1.5 ? 'High volume' : 'Normal volume',
+          newsSentiment: newsSentiment
+            ? {
+                sentiment: newsSentiment.sentiment,
+                score: newsSentiment.score,
+                reason: newsSentiment.reason,
+                impact: newsSentiment.impactLevel,
+              }
+            : null,
         },
         timestamp: Date.now(),
         status: 'active',
@@ -102,7 +120,7 @@ class SignalService {
     }
   }
 
-  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction) {
+  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment = null) {
     let bullishScore = 0;
     let bearishScore = 0;
 
@@ -125,6 +143,13 @@ class SignalService {
       } else if (mlPrediction.direction === 'down' && mlPrediction.probability > 0.6) {
         bearishScore += 2;
       }
+    }
+
+    // News sentiment layer - adds up to 2 extra points (high impact only)
+    if (newsSentiment) {
+      const { boost, direction } = newsService.sentimentToSignalScore(newsSentiment);
+      if (direction === 'bullish') bullishScore += boost;
+      else if (direction === 'bearish') bearishScore += boost;
     }
 
     const totalScore = bullishScore + bearishScore;

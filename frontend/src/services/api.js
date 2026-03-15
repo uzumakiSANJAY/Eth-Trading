@@ -60,6 +60,9 @@ export const signalsAPI = {
 
   getSignalHistory: (symbol = 'ETHUSDT', timeframe = '1h', limit = 50) =>
     api.get('/api/signals/history', { params: { symbol, timeframe, limit } }),
+
+  getNewsSentiment: () =>
+    api.get('/api/signals/news-sentiment', { timeout: 15000 }),
 };
 
 export default api;
