@@ -49,6 +49,7 @@ class SignalsController {
       next(error);
     }
   }
+
   async getNewsSentiment(req, res, next) {
     try {
       const sentiment = await newsService.getNewsSentiment();
@@ -56,6 +57,24 @@ class SignalsController {
     } catch (error) {
       next(error);
     }
+  }
+
+  async getDailyStats(req, res, next) {
+    try {
+      const { symbol = 'ETHUSDT' } = req.query;
+      const riskManager = require('../services/riskManager.service');
+      const stats = await riskManager.getDailyStats(symbol);
+      res.json({ success: true, data: stats });
+    } catch (error) { next(error); }
+  }
+
+  async getMarketIntel(req, res, next) {
+    try {
+      const { symbol = 'ETHUSDT' } = req.query;
+      const marketIntelService = require('../services/marketIntel.service');
+      const intel = await marketIntelService.getAllIntel(symbol);
+      res.json({ success: true, data: intel });
+    } catch (error) { next(error); }
   }
 }
 
