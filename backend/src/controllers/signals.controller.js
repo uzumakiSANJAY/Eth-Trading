@@ -76,6 +76,23 @@ class SignalsController {
       res.json({ success: true, data: intel });
     } catch (error) { next(error); }
   }
+
+  async getRedditSentiment(req, res, next) {
+    try {
+      const redditService = require('../services/reddit.service');
+      const data = await redditService.getSentiment();
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  }
+
+  async getOnchainData(req, res, next) {
+    try {
+      const { symbol = 'ETHUSDT' } = req.query;
+      const onchainService = require('../services/onchain.service');
+      const data = await onchainService.getAllOnchain(symbol);
+      res.json({ success: true, data });
+    } catch (error) { next(error); }
+  }
 }
 
 module.exports = new SignalsController();

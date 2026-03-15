@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const axios = require('axios');
 const marketService = require('./market.service');
 const analysisService = require('./analysis.service');
 const patternService = require('./pattern.service');
@@ -56,6 +57,33 @@ function startScheduledJobs() {
       await patternService.detectAndStorePatterns('ETHUSDT', '1d');
     } catch (error) {
       logger.error('1d data fetch and analysis failed:', error.message);
+    }
+  });
+
+  // Collect Reddit sentiment data daily at 6 AM UTC for ML training pipeline
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+      const res = await axios.post(`${mlUrl}/sentiment/collect`, {}, { timeout: 30000 });
+      logger.info(`Daily sentiment collection: ${res.data.inserted} samples added`);
+    } catch (error) {
+      logger.warn(`Daily sentiment collection failed: ${error.message}`);
+    }
+  });
+
+  // Auto-retrain sentiment model every Sunday at 3 AM UTC (once enough data accumulates)
+  cron.schedule('0 3 * * 0', async () => {
+    try {
+      const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+      const info = await axios.get(`${mlUrl}/sentiment/info`, { timeout: 5000 });
+      if (info.data.ready_to_train) {
+        const res = await axios.post(`${mlUrl}/sentiment/train`, {}, { timeout: 60000 });
+        logger.info(`Weekly sentiment model retrain: accuracy=${res.data.training_result?.accuracy}`);
+      } else {
+        logger.info(`Sentiment model not ready to train yet: ${info.data.training_data?.total} samples`);
+      }
+    } catch (error) {
+      logger.warn(`Weekly sentiment retrain failed: ${error.message}`);
     }
   });
 

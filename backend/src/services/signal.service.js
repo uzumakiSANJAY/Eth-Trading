@@ -9,6 +9,8 @@ const divergenceService = require('./divergence.service');
 const srService = require('./supportResistance.service');
 const structureService = require('./marketStructure.service');
 const riskManager = require('./riskManager.service');
+const redditService = require('./reddit.service');
+const onchainService = require('./onchain.service');
 const logger = require('../utils/logger');
 
 class SignalService {
@@ -45,7 +47,9 @@ class SignalService {
         volumeAnalysis,
         newsResult,
         marketIntelResult,
-        mlResult
+        mlResult,
+        redditResult,
+        onchainResult
       ] = await Promise.allSettled([
         (async () => {
           await patternService.detectAndStorePatterns(symbol, timeframe);
@@ -62,7 +66,9 @@ class SignalService {
             ema21: parseFloat(indicators.ema21), ema50: parseFloat(indicators.ema50),
             atr: parseFloat(indicators.atr), vwap: parseFloat(indicators.vwap),
           },
-        }, { timeout: 5000 })
+        }, { timeout: 5000 }),
+        redditService.getSentiment(),
+        onchainService.getAllOnchain(symbol),
       ]);
 
       const patterns = patternResult.status === 'fulfilled' ? patternResult.value : [];
@@ -76,6 +82,8 @@ class SignalService {
           probability: 0.5,
         };
       }
+      const redditSentiment = redditResult?.status === 'fulfilled' ? redditResult.value : null;
+      const onchainData = onchainResult?.status === 'fulfilled' ? onchainResult.value : null;
 
       // --- Advanced analysis (uses ohlcvData) ---
       const divergence = divergenceService.analyzeDivergences(ohlcvData, indicators);
@@ -86,7 +94,8 @@ class SignalService {
       // --- Make signal decision ---
       const signalDecision = this.makeSignalDecision(
         indicatorAnalysis, patterns, volumeData, mlPrediction,
-        newsSentiment, marketIntel, divergence, srLevels, structure
+        newsSentiment, marketIntel, divergence, srLevels, structure,
+        redditSentiment, onchainData
       );
 
       if (signalDecision.signalType === 'HOLD' || signalDecision.signalType === 'VETOED') {
@@ -128,6 +137,19 @@ class SignalService {
           supportResistance: { nearestSupport: srLevels.nearestSupport, nearestResistance: srLevels.nearestResistance, analysis: srLevels.analysis },
           marketStructure: { trend: structure.trend, bos: structure.bos, choch: structure.choch, summary: structure.summary },
           volumeProfile: volumeProfile ? { poc: volumeProfile.poc, vah: volumeProfile.vah, val: volumeProfile.val } : null,
+          redditSentiment: redditSentiment ? {
+            sentiment: redditSentiment.sentiment,
+            score: redditSentiment.score,
+            intensity: redditSentiment.intensity,
+            topTitles: redditSentiment.topTitles?.slice(0, 3)
+          } : null,
+          onchain: onchainData ? {
+            longShortBias: onchainData.longShortRatio?.bias,
+            topTraderBias: onchainData.topTraderRatio?.bias,
+            takerBias: onchainData.takerRatio?.bias,
+            compositeBias: onchainData.compositeBias,
+            tvlTrend: onchainData.defiTVL?.trend
+          } : null,
           tradeManagement: riskManagement.tradeManagement,
           scoreBreakdown: signalDecision.scoreBreakdown,
         },
@@ -143,7 +165,7 @@ class SignalService {
     }
   }
 
-  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure) {
+  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure, redditSentiment = null, onchainData = null) {
     let bullishScore = 0;
     let bearishScore = 0;
     const scoreBreakdown = [];
@@ -231,6 +253,30 @@ class SignalService {
         if (prelimDirection === 'bullish') bullishScore += structScore.boost;
         else bearishScore += structScore.boost;
         scoreBreakdown.push(`Structure: ${structScore.boost} (counter-trend penalty)`);
+      }
+    }
+
+    // 10. Reddit social sentiment
+    if (redditSentiment) {
+      const redditScore = redditService.scoreSentiment(redditSentiment, prelimDirection);
+      if (redditScore.boost > 0) {
+        if (prelimDirection === 'bullish') { bullishScore += redditScore.boost; scoreBreakdown.push(`Reddit: +${redditScore.boost} (${redditSentiment.intensity} ${redditSentiment.sentiment})`); }
+        else { bearishScore += redditScore.boost; scoreBreakdown.push(`Reddit: +${redditScore.boost} (${redditSentiment.intensity} ${redditSentiment.sentiment})`); }
+      } else if (redditScore.boost < 0) {
+        if (prelimDirection === 'bullish') { bullishScore += redditScore.boost; scoreBreakdown.push(`Reddit: ${redditScore.boost} counter-signal`); }
+        else { bearishScore += redditScore.boost; scoreBreakdown.push(`Reddit: ${redditScore.boost} counter-signal`); }
+      }
+    }
+
+    // 11. On-chain / derivatives data
+    if (onchainData) {
+      const onchainScore = onchainService.scoreOnchain(onchainData, prelimDirection);
+      if (onchainScore.boost > 0) {
+        if (prelimDirection === 'bullish') { bullishScore += onchainScore.boost; scoreBreakdown.push(`On-chain: +${onchainScore.boost} (${onchainData.compositeBias})`); }
+        else { bearishScore += onchainScore.boost; scoreBreakdown.push(`On-chain: +${onchainScore.boost} (${onchainData.compositeBias})`); }
+      } else if (onchainScore.boost < 0) {
+        if (prelimDirection === 'bullish') { bullishScore += onchainScore.boost; scoreBreakdown.push(`On-chain: ${onchainScore.boost} counter`); }
+        else { bearishScore += onchainScore.boost; scoreBreakdown.push(`On-chain: ${onchainScore.boost} counter`); }
       }
     }
 

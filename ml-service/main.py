@@ -9,6 +9,8 @@ from datetime import datetime
 from services.feature_engineering import FeatureEngineer
 from services.model_trainer import ModelTrainer
 from services.predictor import Predictor
+from services.sentiment_collector import SentimentCollector
+from services.sentiment_model import SentimentModel
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +35,8 @@ app.add_middleware(
 feature_engineer = FeatureEngineer()
 model_trainer = ModelTrainer()
 predictor = Predictor()
+sentiment_collector = SentimentCollector()
+sentiment_model = SentimentModel()
 
 
 class PredictionRequest(BaseModel):
@@ -160,6 +164,78 @@ async def engineer_features(indicators: Dict[str, float]):
     except Exception as e:
         logger.error(f"Feature engineering error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class SentimentRequest(BaseModel):
+    text: str
+
+
+class SentimentBatchRequest(BaseModel):
+    texts: list
+
+
+@app.post("/sentiment/predict")
+async def predict_sentiment(request: SentimentRequest):
+    """Predict sentiment for a single text using trained ML model."""
+    try:
+        result = sentiment_model.predict(request.text)
+        return {"success": True, "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sentiment/predict-batch")
+async def predict_sentiment_batch(request: SentimentBatchRequest):
+    """Predict sentiment for multiple texts efficiently."""
+    try:
+        results = sentiment_model.predict_batch(request.texts)
+        return {"success": True, "data": results, "count": len(results)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sentiment/collect")
+async def collect_sentiment_data():
+    """Collect today's Reddit posts and auto-label them for training."""
+    try:
+        inserted = sentiment_collector.collect_and_store()
+        stats = sentiment_collector.get_stats()
+        return {"success": True, "inserted": inserted, "db_stats": stats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/sentiment/train")
+async def train_sentiment_model():
+    """Train sentiment model on all collected data."""
+    try:
+        texts, labels = sentiment_collector.get_training_data(min_confidence=0.6)
+        if len(texts) < 50:
+            return {
+                "success": False,
+                "message": f"Not enough data yet: {len(texts)} samples. Need 50+. Run /sentiment/collect daily.",
+                "current_samples": len(texts)
+            }
+        result = sentiment_model.train(texts, labels)
+        return {"success": True, "training_result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/sentiment/info")
+async def get_sentiment_model_info():
+    """Get sentiment model status and training stats."""
+    try:
+        model_info = sentiment_model.get_info()
+        db_stats = sentiment_collector.get_stats()
+        return {
+            "success": True,
+            "model": model_info,
+            "training_data": db_stats,
+            "ready_to_train": db_stats["total"] >= 50
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
