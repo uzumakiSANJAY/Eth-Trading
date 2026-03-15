@@ -4,7 +4,6 @@ import TradingViewChart from '../Chart/TradingViewChart';
 import IndicatorsPanel from '../Indicators/IndicatorsPanel';
 import SignalCard from '../Signals/SignalCard';
 import MultiTimeframePanel from '../MultiTimeframe/MultiTimeframePanel';
-import NewsSentimentPanel from '../Signals/NewsSentimentPanel';
 import { marketAPI, analysisAPI, signalsAPI } from '../../services/api';
 import { useWebSocketStore } from '../../services/websocket';
 
@@ -18,15 +17,11 @@ const Dashboard = () => {
   const [generatingSignal, setGeneratingSignal] = useState(false);
   const [mtfAnalysis, setMtfAnalysis] = useState(null);
   const [loadingMtf, setLoadingMtf] = useState(false);
-  const [newsSentiment, setNewsSentiment] = useState(null);
-  const [loadingNews, setLoadingNews] = useState(false);
-  const [newsError, setNewsError] = useState(false);
 
   const { currentPrice, isConnected } = useWebSocketStore();
 
   useEffect(() => {
     fetchAllData();
-    fetchNewsSentiment();
   }, [timeframe]);
 
   const fetchAllData = async () => {
@@ -60,20 +55,6 @@ const Dashboard = () => {
       setAnalysis(response.data.data.analysis);
     } catch (error) {
       console.error('Error fetching indicators:', error);
-    }
-  };
-
-  const fetchNewsSentiment = async () => {
-    setLoadingNews(true);
-    setNewsError(false);
-    try {
-      const response = await signalsAPI.getNewsSentiment();
-      setNewsSentiment(response.data.data);
-    } catch (error) {
-      console.error('Error fetching news sentiment:', error);
-      setNewsError(true);
-    } finally {
-      setLoadingNews(false);
     }
   };
 
@@ -219,13 +200,6 @@ const Dashboard = () => {
 
         <div className="space-y-6">
           <IndicatorsPanel indicators={indicators} analysis={analysis} />
-
-          <NewsSentimentPanel
-            sentiment={newsSentiment}
-            loading={loadingNews}
-            error={newsError}
-            onRefresh={fetchNewsSentiment}
-          />
 
           <div className="card bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200">
             <h4 className="text-sm font-semibold text-gray-900 mb-2">⚠️ Important Disclaimer</h4>

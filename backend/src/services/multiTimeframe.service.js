@@ -1,5 +1,5 @@
 const analysisService = require('./analysis.service');
-const signalService = require('./signal.service');
+const riskManager = require('./riskManager.service');
 const marketService = require('./market.service');
 const patternService = require('./pattern.service');
 const logger = require('../utils/logger');
@@ -65,7 +65,7 @@ class MultiTimeframeService {
 
       let riskManagement = null;
       if (combined.signalType !== 'HOLD' && atr) {
-        riskManagement = signalService.calculateRiskManagement(
+        riskManagement = riskManager.calculateEnhancedRisk(
           currentPrice,
           combined.signalType,
           atr
