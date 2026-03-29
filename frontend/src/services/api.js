@@ -30,6 +30,9 @@ export const marketAPI = {
 
   fetchFreshData: (symbol = 'ETH/USDT', timeframe = '1h', limit = 500) =>
     api.post('/api/market/fetch', null, { params: { symbol, timeframe, limit } }),
+
+  get24hStats: (symbol = 'ETHUSDT') =>
+    api.get('/api/market/24h-stats', { params: { symbol } }),
 };
 
 export const analysisAPI = {

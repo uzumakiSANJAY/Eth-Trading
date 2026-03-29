@@ -67,6 +67,16 @@ class MarketController {
     }
   }
 
+  async get24hStats(req, res, next) {
+    try {
+      const { symbol = 'ETHUSDT' } = req.query;
+      const stats = await marketService.get24hStats(symbol);
+      res.json({ success: true, data: stats });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async fetchFreshData(req, res, next) {
     try {
       const { symbol = 'ETH/USDT', timeframe = '1h', limit = 500 } = req.query;

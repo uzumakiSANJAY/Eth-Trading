@@ -21,13 +21,24 @@ const Dashboard = () => {
   const [newsSentiment, setNewsSentiment] = useState(null);
   const [loadingNews, setLoadingNews] = useState(false);
   const [newsError, setNewsError] = useState(false);
+  const [stats24h, setStats24h] = useState(null);
 
   const { currentPrice, isConnected } = useWebSocketStore();
 
   useEffect(() => {
     fetchAllData();
     fetchNewsSentiment();
+    fetch24hStats();
   }, [timeframe]);
+
+  const fetch24hStats = async () => {
+    try {
+      const response = await marketAPI.get24hStats('ETHUSDT');
+      setStats24h(response.data.data);
+    } catch (error) {
+      console.error('Error fetching 24h stats:', error);
+    }
+  };
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -36,6 +47,7 @@ const Dashboard = () => {
         fetchOhlcvData(),
         fetchIndicators(),
         fetchLatestSignal(),
+        fetch24hStats(),
       ]);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -128,6 +140,27 @@ const Dashboard = () => {
           </p>
         </div>
         <div className="flex items-center space-x-3">
+          {stats24h && (
+            <div className="px-4 py-2 bg-white rounded-lg shadow">
+              <p className="text-xs text-gray-500 font-medium mb-1">24h Range</p>
+              <div className="flex flex-col space-y-1">
+                <div className="flex items-center justify-between space-x-4">
+                  <span className="text-xs text-green-600 font-semibold">H</span>
+                  <span className="text-sm font-bold text-green-600">${stats24h.high.toFixed(2)}</span>
+                  <span className="text-xs text-gray-400">
+                    {new Date(Number(stats24h.highTime)).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between space-x-4">
+                  <span className="text-xs text-red-500 font-semibold">L</span>
+                  <span className="text-sm font-bold text-red-500">${stats24h.low.toFixed(2)}</span>
+                  <span className="text-xs text-gray-400">
+                    {new Date(Number(stats24h.lowTime)).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
           {currentPrice && (
             <div className="px-4 py-2 bg-white rounded-lg shadow">
               <p className="text-xs text-gray-500">Current Price</p>
