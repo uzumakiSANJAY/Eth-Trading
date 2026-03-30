@@ -105,11 +105,12 @@ class MarketService {
   }
 
   async get24hStats(symbol = 'ETHUSDT') {
-    const cacheKey = `24hstats:${symbol}`;
-    const cached = await getCache(cacheKey);
-    if (cached) return cached;
+    const data = await Ohlcv.findAll({
+      where: { symbol, timeframe: '1h' },
+      order: [['timestamp', 'DESC']],
+      limit: 24,
+    });
 
-    const data = await this.getHistoricalData(symbol, '1h', 24);
     if (data.length === 0) return null;
 
     let highCandle = data[0];
@@ -120,15 +121,12 @@ class MarketService {
       if (parseFloat(candle.low) < parseFloat(lowCandle.low)) lowCandle = candle;
     }
 
-    const result = {
+    return {
       high: parseFloat(highCandle.high),
       highTime: highCandle.timestamp,
       low: parseFloat(lowCandle.low),
       lowTime: lowCandle.timestamp,
     };
-
-    await setCache(cacheKey, result, 60);
-    return result;
   }
 
   async getVolumeAnalysis(symbol = 'ETHUSDT', timeframe = '1h', candles = 24) {
