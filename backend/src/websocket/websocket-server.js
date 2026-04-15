@@ -28,12 +28,11 @@ function initWebSocket(io) {
         priceUpdateInterval = setInterval(async () => {
           try {
             const price = await marketService.getCurrentPrice('ETH/USDT');
-            // Broadcast to the normalized room so all subscribers receive it
-            io.to('ETH/USDT_1h').emit('price_update', {
-              symbol: 'ETHUSDT',
-              price,
-              timestamp: Date.now(),
-            });
+            const payload = { symbol: 'ETHUSDT', price, timestamp: Date.now() };
+            // Broadcast to all timeframe rooms — price is timeframe-agnostic
+            ['1m', '5m', '15m', '30m', '1h', '4h', '1d'].forEach(tf =>
+              io.to(`ETH/USDT_${tf}`).emit('price_update', payload)
+            );
           } catch (error) {
             logger.error(`WebSocket price update error: ${error.message}`);
           }

@@ -92,6 +92,11 @@ const Signal = sequelize.define('Signal', {
     {
       fields: ['status'],
     },
+    {
+      // Hot path: _autoClosePreviousSignal + getLatestSignal both filter on
+      // (symbol, timeframe, status) — composite index avoids full table scans
+      fields: ['symbol', 'timeframe', 'status'],
+    },
   ],
   timestamps: true,
   updatedAt: true,

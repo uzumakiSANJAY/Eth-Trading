@@ -1,6 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 
+// Calculate EMA from an array of closes. Returns one value per input close
+// starting from `period - 1` index (earlier values are null/skipped).
+const calcEMA = (closes, period) => {
+  if (!closes || closes.length < period) return [];
+  const k = 2 / (period + 1);
+  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  const result = [{ startIdx: period - 1, value: ema }];
+  for (let i = period; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+    result.push({ startIdx: i, value: ema });
+  }
+  return result;
+};
+
 const TradingViewChart = ({ data, indicators, height = 500 }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -125,38 +139,42 @@ const TradingViewChart = ({ data, indicators, height = 500 }) => {
   }, [data]);
 
   useEffect(() => {
-    if (!indicators || !data || data.length === 0) return;
+    if (!data || data.length === 0) return;
 
-    if (indicators.ema9 && ema9SeriesRef.current) {
-      const ema9Data = data
-        .filter((_, idx) => idx >= 8)
-        .map((candle) => ({
-          time: Math.floor(candle.timestamp / 1000),
-          value: parseFloat(indicators.ema9),
-        }));
-      ema9SeriesRef.current.setData(ema9Data);
+    // Calculate EMAs from actual candle close prices so the chart shows
+    // real curves, not a flat horizontal line at the latest EMA value.
+    const closes = data.map((c) => parseFloat(c.close));
+
+    if (ema9SeriesRef.current) {
+      const ema9Points = calcEMA(closes, 9);
+      ema9SeriesRef.current.setData(
+        ema9Points.map(({ startIdx, value }) => ({
+          time: Math.floor(data[startIdx].timestamp / 1000),
+          value,
+        }))
+      );
     }
 
-    if (indicators.ema21 && ema21SeriesRef.current) {
-      const ema21Data = data
-        .filter((_, idx) => idx >= 20)
-        .map((candle) => ({
-          time: Math.floor(candle.timestamp / 1000),
-          value: parseFloat(indicators.ema21),
-        }));
-      ema21SeriesRef.current.setData(ema21Data);
+    if (ema21SeriesRef.current) {
+      const ema21Points = calcEMA(closes, 21);
+      ema21SeriesRef.current.setData(
+        ema21Points.map(({ startIdx, value }) => ({
+          time: Math.floor(data[startIdx].timestamp / 1000),
+          value,
+        }))
+      );
     }
 
-    if (indicators.ema50 && ema50SeriesRef.current) {
-      const ema50Data = data
-        .filter((_, idx) => idx >= 49)
-        .map((candle) => ({
-          time: Math.floor(candle.timestamp / 1000),
-          value: parseFloat(indicators.ema50),
-        }));
-      ema50SeriesRef.current.setData(ema50Data);
+    if (ema50SeriesRef.current) {
+      const ema50Points = calcEMA(closes, 50);
+      ema50SeriesRef.current.setData(
+        ema50Points.map(({ startIdx, value }) => ({
+          time: Math.floor(data[startIdx].timestamp / 1000),
+          value,
+        }))
+      );
     }
-  }, [indicators, data]);
+  }, [data]);
 
   return (
     <div className="w-full bg-white rounded-lg shadow-md p-4">

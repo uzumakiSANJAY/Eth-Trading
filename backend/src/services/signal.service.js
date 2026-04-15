@@ -113,7 +113,7 @@ class SignalService {
         analysisService.getLatestIndicators(symbol, timeframe),
         analysisService.getIndicatorHistory(symbol, timeframe, 50),
       ]);
-      const indicatorAnalysis = await analysisService.analyzeIndicators(indicators);
+      const indicatorAnalysis = await analysisService.analyzeIndicators(indicators, currentPrice);
 
       // --- Run all analysis in parallel ---
       const [

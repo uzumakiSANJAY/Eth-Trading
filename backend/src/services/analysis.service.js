@@ -146,7 +146,7 @@ class AnalysisService {
     };
   }
 
-  async analyzeIndicators(indicator) {
+  async analyzeIndicators(indicator, currentPrice = null) {
     let bullishScore = 0;
     let bearishScore = 0;
     const details = {};
@@ -191,8 +191,10 @@ class AnalysisService {
       }
     }
 
-    if (indicator.bollingerUpper && indicator.bollingerLower && indicator.vwap) {
-      const price = parseFloat(indicator.vwap);
+    if (indicator.bollingerUpper && indicator.bollingerLower && (currentPrice || indicator.vwap)) {
+      // Use actual currentPrice (close) for BB comparison — BB bands are built on close prices.
+      // Fall back to VWAP only if currentPrice is not provided.
+      const price = currentPrice ? parseFloat(currentPrice) : parseFloat(indicator.vwap);
       const upper = parseFloat(indicator.bollingerUpper);
       const lower = parseFloat(indicator.bollingerLower);
 
