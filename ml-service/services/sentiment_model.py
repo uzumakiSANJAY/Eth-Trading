@@ -162,7 +162,7 @@ class SentimentModel:
 
     def _keyword_fallback(self, text: str) -> dict:
         """Simple keyword fallback when model is not trained yet."""
-        from services.sentiment_collector import BULLISH_KEYWORDS, BEARISH_KEYWORDS
+        from .sentiment_collector import BULLISH_KEYWORDS, BEARISH_KEYWORDS
         lower = text.lower()
         bull = sum(1 for kw in BULLISH_KEYWORDS if kw in lower)
         bear = sum(1 for kw in BEARISH_KEYWORDS if kw in lower)

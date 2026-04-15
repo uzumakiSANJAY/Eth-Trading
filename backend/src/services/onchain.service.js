@@ -19,6 +19,9 @@ class OnchainService {
       const top = topRes.data;
       const taker = takerRes.data;
 
+      if (!global?.length || !top?.length || !taker?.length) {
+        throw new Error('Binance returned empty long/short ratio arrays');
+      }
       const latestGlobal = parseFloat(global[global.length - 1].longShortRatio);
       const latestTop = parseFloat(top[top.length - 1].longShortRatio);
       const latestTakerBuy = parseFloat(taker[taker.length - 1].buySellRatio);

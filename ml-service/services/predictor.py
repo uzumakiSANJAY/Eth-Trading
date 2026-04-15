@@ -78,6 +78,13 @@ class Predictor:
 
             feature_vector = np.array(list(features.values())).reshape(1, -1)
 
+            expected = getattr(self.model, 'n_features_in_', None)
+            if expected is not None and feature_vector.shape[1] != expected:
+                raise ValueError(
+                    f"Feature count mismatch: model expects {expected}, got {feature_vector.shape[1]}. "
+                    "Retrain the model after feature engineering changes."
+                )
+
             prediction_class = self.model.predict(feature_vector)[0]
 
             if hasattr(self.model, 'predict_proba'):

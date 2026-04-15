@@ -267,6 +267,7 @@ class SignalService {
   }
 
   makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure, redditSentiment = null, onchainData = null) {
+    try {
     let bullishScore = 0;
     let bearishScore = 0;
     const scoreBreakdown = [];
@@ -408,6 +409,10 @@ class SignalService {
     }
 
     return { signalType: 'HOLD', confidence, scoreBreakdown, bullishScore, bearishScore };
+    } catch (err) {
+      logger.error(`makeSignalDecision error: ${err.message}`);
+      return { signalType: 'HOLD', confidence: 50, scoreBreakdown: [`Error: ${err.message}`], bullishScore: 0, bearishScore: 0 };
+    }
   }
 
   async getLatestSignal(symbol = 'ETHUSDT', timeframe = '1h') {

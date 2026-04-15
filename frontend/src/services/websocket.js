@@ -23,8 +23,20 @@ export const useWebSocket = () => {
   const connect = () => {
     if (socket?.connected) return;
 
+    // If socket exists but is disconnected (e.g. server dropped the connection),
+    // clean up the stale instance before creating a new one to avoid duplicate
+    // event listeners accumulating on every reconnect attempt.
+    if (socket) {
+      socket.removeAllListeners();
+      socket.disconnect();
+      socket = null;
+    }
+
     socket = io(WS_URL, {
       transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
     });
 
     socket.on('connect', () => {

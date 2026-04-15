@@ -1,4 +1,3 @@
-const ccxt = require('ccxt');
 const logger = require('../utils/logger');
 const marketService = require('../services/market.service');
 
@@ -19,13 +18,17 @@ function initWebSocket(io) {
       const { symbol = 'ETH/USDT', timeframe = '1h' } = data;
       logger.info(`Client ${socket.id} subscribed to ${symbol} ${timeframe}`);
 
-      socket.join(`${symbol}_${timeframe}`);
+      // Normalize room name: always use slash format so room key is consistent
+      const normalizedSymbol = symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
+      const roomName = `${normalizedSymbol}_${timeframe}`;
+      socket.join(roomName);
 
       // Start interval only once — cleared when last client disconnects
       if (!priceUpdateInterval) {
         priceUpdateInterval = setInterval(async () => {
           try {
             const price = await marketService.getCurrentPrice('ETH/USDT');
+            // Broadcast to the normalized room so all subscribers receive it
             io.to('ETH/USDT_1h').emit('price_update', {
               symbol: 'ETHUSDT',
               price,
@@ -52,7 +55,8 @@ function initWebSocket(io) {
     socket.on('unsubscribe', (data) => {
       const { symbol = 'ETH/USDT', timeframe = '1h' } = data;
       logger.info(`Client ${socket.id} unsubscribed from ${symbol} ${timeframe}`);
-      socket.leave(`${symbol}_${timeframe}`);
+      const normalizedSymbol = symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
+      socket.leave(`${normalizedSymbol}_${timeframe}`);
     });
 
     socket.on('disconnect', () => {
