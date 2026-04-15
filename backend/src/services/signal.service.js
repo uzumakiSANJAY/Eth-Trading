@@ -138,7 +138,10 @@ class SignalService {
             rsi: parseFloat(indicators.rsi), macd: parseFloat(indicators.macd),
             macdSignal: parseFloat(indicators.macdSignal), ema9: parseFloat(indicators.ema9),
             ema21: parseFloat(indicators.ema21), ema50: parseFloat(indicators.ema50),
+            ema200: parseFloat(indicators.ema200) || 0,
             atr: parseFloat(indicators.atr), vwap: parseFloat(indicators.vwap),
+            adx: parseFloat(indicators.adx) || 25,
+            bbWidth: parseFloat(indicators.bbWidth) || 4,
             close: currentPrice, // required for correct price_to_ema / price_to_vwap features
           },
         }, { timeout: 5000 }),
@@ -166,11 +169,25 @@ class SignalService {
       const structure = structureService.analyzeStructure(ohlcvData);
       const volumeProfile = riskManager.calculateVolumeProfile(ohlcvData);
 
+      // --- 4h multi-timeframe confirmation (higher timeframe bias) ---
+      let htfBias = null;
+      if (timeframe !== '4h' && timeframe !== '1d') {
+        try {
+          const indicators4h = await analysisService.getLatestIndicators(symbol, '4h');
+          if (indicators4h) {
+            const analysis4h = await analysisService.analyzeIndicators(indicators4h, currentPrice);
+            htfBias = analysis4h.signal; // 'bullish' | 'bearish' | 'neutral'
+          }
+        } catch (e) {
+          logger.warn(`HTF 4h fetch failed: ${e.message}`);
+        }
+      }
+
       // --- Make signal decision ---
       const signalDecision = this.makeSignalDecision(
         indicatorAnalysis, patterns, volumeData, mlPrediction,
         newsSentiment, marketIntel, divergence, srLevels, structure,
-        redditSentiment, onchainData
+        redditSentiment, onchainData, volumeProfile, currentPrice, htfBias
       );
 
       // --- Risk management ---
@@ -267,11 +284,25 @@ class SignalService {
     }
   }
 
-  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure, redditSentiment = null, onchainData = null) {
+  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure, redditSentiment = null, onchainData = null, volumeProfile = null, currentPrice = null, htfBias = null) {
     try {
     let bullishScore = 0;
     let bearishScore = 0;
     const scoreBreakdown = [];
+
+    // --- ADX: ranging market filter ---
+    // If ADX < 20 the market is choppy — no reliable trend exists.
+    // Return HOLD immediately; all other indicators are noise in a range.
+    if (indicatorAnalysis.isRanging) {
+      return {
+        signalType: 'HOLD',
+        confidence: 45,
+        scoreBreakdown: ['ADX < 20: ranging market — signal suppressed'],
+        bullishScore: 0,
+        bearishScore: 0,
+        vetoReason: 'ADX < 20: choppy/ranging market',
+      };
+    }
 
     // 1. Indicator analysis (max +2)
     if (indicatorAnalysis.signal === 'bullish') { bullishScore += 2; scoreBreakdown.push('Indicators: +2 bullish'); }
@@ -384,6 +415,44 @@ class SignalService {
       }
     }
 
+    // 12. Volume Profile — POC is a price magnet; VAH/VAL are value area boundaries
+    // Trading in the direction of POC increases probability of follow-through
+    if (volumeProfile && currentPrice) {
+      const { poc, vah, val } = volumeProfile;
+      const prelimDir = bullishScore > bearishScore ? 'bullish' : 'bearish';
+      if (prelimDir === 'bullish' && currentPrice < poc) {
+        bullishScore += 1;
+        scoreBreakdown.push(`Vol Profile: +1 (price below POC $${poc} — upside magnet)`);
+      } else if (prelimDir === 'bearish' && currentPrice > poc) {
+        bearishScore += 1;
+        scoreBreakdown.push(`Vol Profile: +1 (price above POC $${poc} — downside magnet)`);
+      }
+      // Price near Value Area High (resistance) on a BUY = risk; near VAL on SELL = risk
+      if (prelimDir === 'bullish' && vah && currentPrice > vah * 0.998) {
+        bullishScore -= 1;
+        scoreBreakdown.push(`Vol Profile: -1 (at/above VAH $${vah} — value area resistance)`);
+      } else if (prelimDir === 'bearish' && val && currentPrice < val * 1.002) {
+        bearishScore -= 1;
+        scoreBreakdown.push(`Vol Profile: -1 (at/below VAL $${val} — value area support)`);
+      }
+    }
+
+    // 13. Higher Timeframe (4h) Bias — confirms or contradicts the proposed direction
+    // A 1h BUY against a 4h bearish trend is a counter-trend trade; penalize.
+    // A 1h BUY with 4h bullish confirmation is high-probability; boost.
+    if (htfBias && htfBias !== 'neutral') {
+      const prelimDir = bullishScore > bearishScore ? 'bullish' : 'bearish';
+      if (htfBias === prelimDir) {
+        if (prelimDir === 'bullish') bullishScore += 2;
+        else bearishScore += 2;
+        scoreBreakdown.push(`HTF 4h: +2 (4h trend aligns — ${htfBias})`);
+      } else {
+        if (prelimDir === 'bullish') bullishScore -= 2;
+        else bearishScore -= 2;
+        scoreBreakdown.push(`HTF 4h: -2 (4h trend opposes — ${htfBias}, counter-trend trade)`);
+      }
+    }
+
     // --- Final decision ---
     bullishScore = Math.max(0, bullishScore);
     bearishScore = Math.max(0, bearishScore);
@@ -392,7 +461,8 @@ class SignalService {
     // Confidence = blend of ratio (alignment) and magnitude (how many signals confirm).
     // Pure ratio formula (old) gave identical confidence for bull=2/bear=1 and bull=10/bear=5.
     // Now: higher absolute scores push confidence up, not just the ratio.
-    const MAX_MEANINGFUL_SCORE = 14; // realistic maximum across all 11 factors
+    // Updated max meaningful score to 18 to account for the 4 new factors (ADX, EMA200, VolProfile, HTF).
+    const MAX_MEANINGFUL_SCORE = 18;
     const ratio = totalScore > 0 ? Math.max(bullishScore, bearishScore) / totalScore : 0.5;
     const magnitude = Math.min(1.0, Math.max(bullishScore, bearishScore) / MAX_MEANINGFUL_SCORE);
     const confidence = totalScore > 0

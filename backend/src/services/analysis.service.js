@@ -1,4 +1,4 @@
-const { RSI, MACD, EMA, ATR, BollingerBands, OBV } = require('technicalindicators');
+const { RSI, MACD, EMA, ATR, BollingerBands, OBV, ADX } = require('technicalindicators');
 const { Indicator } = require('../models');
 const marketService = require('./market.service');
 const logger = require('../utils/logger');
@@ -50,6 +50,8 @@ class AnalysisService {
         stdDev: 2,
       });
 
+      const adxValues = ADX.calculate({ close: closes, high: highs, low: lows, period: 14 });
+
       const obvValues = OBV.calculate({ close: closes, volume: volumes });
       const obvSmaLength = Math.min(10, obvValues.length);
       // Guard: empty array → reduce crashes; obvSmaLength=0 → division by zero
@@ -62,6 +64,10 @@ class AnalysisService {
       const latestCandle = ohlcvData[ohlcvData.length - 1];
       const latestMacd = macdValues[macdValues.length - 1];
       const latestBB = bbValues[bbValues.length - 1];
+      const latestAdx = adxValues[adxValues.length - 1] || null;
+      const bbWidth = latestBB
+        ? parseFloat((((latestBB.upper - latestBB.lower) / latestBB.middle) * 100).toFixed(4))
+        : null;
 
       const indicator = await Indicator.create({
         symbol,
@@ -82,6 +88,10 @@ class AnalysisService {
         bollingerLower: latestBB?.lower || null,
         obv: obvValues[obvValues.length - 1] || null,
         obvSma: obvSma || null,
+        adx: latestAdx?.adx ?? null,
+        adxPdi: latestAdx?.pdi ?? null,
+        adxMdi: latestAdx?.mdi ?? null,
+        bbWidth,
       });
 
       logger.info(`Calculated indicators for ${symbol} ${timeframe}`);
@@ -224,6 +234,58 @@ class AnalysisService {
       }
     }
 
+    // --- EMA200: macro trend filter ---
+    // Price above/below EMA200 is the strongest long-term directional filter.
+    // +1 for being on the right side of the macro trend.
+    if (indicator.ema200 && currentPrice) {
+      const ema200 = parseFloat(indicator.ema200);
+      const price = parseFloat(currentPrice);
+      if (price > ema200) {
+        bullishScore += 1;
+        details.ema200 = { value: parseFloat(ema200.toFixed(2)), signal: `Price above EMA200 — macro bullish bias` };
+      } else {
+        bearishScore += 1;
+        details.ema200 = { value: parseFloat(ema200.toFixed(2)), signal: `Price below EMA200 — macro bearish bias` };
+      }
+    }
+
+    // --- ADX: trend strength filter ---
+    // ADX < 20 = ranging/choppy market → low confidence, signals are unreliable.
+    // ADX 20-25 = weak trend, ADX > 25 = trending, ADX > 40 = strong trend.
+    // When trending, +PDI vs -PDI confirms direction.
+    let isRanging = false;
+    if (indicator.adx) {
+      const adx = parseFloat(indicator.adx);
+      const pdi = parseFloat(indicator.adxPdi || 0);
+      const mdi = parseFloat(indicator.adxMdi || 0);
+      if (adx < 20) {
+        isRanging = true;
+        details.adx = { value: parseFloat(adx.toFixed(2)), signal: `Ranging market (ADX ${adx.toFixed(1)}) — avoid trading` };
+      } else if (adx >= 25) {
+        const trendLabel = adx >= 40 ? 'Strong trend' : 'Trending';
+        details.adx = { value: parseFloat(adx.toFixed(2)), signal: `${trendLabel} (ADX ${adx.toFixed(1)})` };
+        // PDI > MDI = bullish momentum; MDI > PDI = bearish momentum
+        if (pdi > mdi) { bullishScore += 1; }
+        else if (mdi > pdi) { bearishScore += 1; }
+      } else {
+        details.adx = { value: parseFloat(adx.toFixed(2)), signal: `Weak trend (ADX ${adx.toFixed(1)})` };
+      }
+    }
+
+    // --- BB Width: squeeze / expansion detection ---
+    // Narrow bands (squeeze) = compressed volatility, breakout imminent.
+    // Very wide bands = volatility already expanded, momentum may exhaust.
+    if (indicator.bbWidth) {
+      const bbW = parseFloat(indicator.bbWidth);
+      if (bbW < 2.0) {
+        details.bbWidth = { value: bbW, signal: `BB Squeeze (${bbW.toFixed(2)}%) — breakout imminent, watch for direction` };
+      } else if (bbW > 8.0) {
+        details.bbWidth = { value: bbW, signal: `BB Wide (${bbW.toFixed(2)}%) — high volatility expansion phase` };
+      } else {
+        details.bbWidth = { value: bbW, signal: `BB Normal width (${bbW.toFixed(2)}%)` };
+      }
+    }
+
     const totalScore = bullishScore + bearishScore;
     const strength = totalScore > 0 ? (Math.max(bullishScore, bearishScore) / totalScore) * 100 : 0;
 
@@ -234,7 +296,7 @@ class AnalysisService {
       signal = 'bearish';
     }
 
-    return { signal, strength, details };
+    return { signal, strength, details, isRanging };
   }
 }
 

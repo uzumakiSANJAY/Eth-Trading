@@ -27,7 +27,11 @@ class FeatureEngineer:
             'atr_normalized',
             'price_to_ema9',
             'price_to_ema21',
-            'price_to_vwap'
+            'price_to_vwap',
+            # --- New features (added for better trend quality filtering) ---
+            'adx',                  # ADX trend strength (0-100); <20 = ranging, >25 = trending
+            'price_to_ema200',      # Price / EMA200 — macro trend position
+            'bb_width',             # BB width % — volatility/squeeze indicator
         ]
 
     def prepare_features_for_prediction(self, indicators: Dict[str, float]) -> Dict[str, Any]:
@@ -42,8 +46,11 @@ class FeatureEngineer:
             ema9 = indicators.get('ema9', 0.0)
             ema21 = indicators.get('ema21', 0.0)
             ema50 = indicators.get('ema50', 0.0)
+            ema200 = indicators.get('ema200', 0.0)
             vwap = indicators.get('vwap', 0.0)
             atr = indicators.get('atr', 0.0)
+            adx = indicators.get('adx', 25.0)         # default neutral trend strength
+            bb_width = indicators.get('bbWidth', 4.0)  # default normal width
             # Use actual close price; backend sends it as 'close'. Fall back to vwap.
             price = indicators.get('close') or vwap or 0.0
 
@@ -65,6 +72,8 @@ class FeatureEngineer:
             avg_price = (ema9 + ema21) / 2 if ema9 and ema21 else price if price else 1.0
             atr_normalized = (atr / avg_price) * 100 if atr and avg_price and avg_price != 0 else 0.0
 
+            price_to_ema200 = (price / ema200) if price and ema200 and ema200 != 0 else 1.0
+
             features = {
                 'rsi': rsi,
                 'rsi_normalized': rsi_normalized,
@@ -81,7 +90,10 @@ class FeatureEngineer:
                 'atr_normalized': atr_normalized,
                 'price_to_ema9': price_to_ema9,
                 'price_to_ema21': price_to_ema21,
-                'price_to_vwap': price_to_vwap
+                'price_to_vwap': price_to_vwap,
+                'adx': float(adx) if adx is not None else 25.0,
+                'price_to_ema200': price_to_ema200,
+                'bb_width': float(bb_width) if bb_width is not None else 4.0,
             }
 
             logger.info(f"Engineered {len(features)} features")
@@ -107,8 +119,11 @@ class FeatureEngineer:
                     'ema9': row.get('ema9', 0.0),
                     'ema21': row.get('ema21', 0.0),
                     'ema50': row.get('ema50', 0.0),
+                    'ema200': row.get('ema200', 0.0),
                     'vwap': row.get('vwap', 0.0),
                     'atr': row.get('atr', 0.0),
+                    'adx': row.get('adx', 25.0),
+                    'bbWidth': row.get('bb_width', 4.0),
                     'close': row.get('close', 0.0),  # actual close price for ratio features
                 }
 

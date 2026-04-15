@@ -79,6 +79,22 @@ const Indicator = sequelize.define('Indicator', {
     type: DataTypes.DECIMAL(24, 4),
     allowNull: true,
   },
+  adx: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  adxPdi: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  adxMdi: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+  },
+  bbWidth: {
+    type: DataTypes.DECIMAL(10, 4),
+    allowNull: true,
+  },
 }, {
   tableName: 'indicators',
   indexes: [
