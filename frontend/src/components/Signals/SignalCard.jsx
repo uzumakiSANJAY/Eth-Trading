@@ -102,7 +102,7 @@ const SignalCard = ({ signal }) => {
             <p className="text-xs text-gray-500 uppercase">Take Profit</p>
           </div>
           <p className="text-xl font-bold text-success-600">
-            ${parseFloat(signal.takeProfit1).toFixed(2)}
+            {signal.takeProfit1 ? `$${parseFloat(signal.takeProfit1).toFixed(2)}` : 'N/A'}
           </p>
           <p className="text-xs text-gray-500 mt-1">
             R/R: {signal.riskRewardRatio ? parseFloat(signal.riskRewardRatio).toFixed(2) : 'N/A'}

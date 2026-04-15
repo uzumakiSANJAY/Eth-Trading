@@ -24,7 +24,7 @@ class MarketController {
       const data = await marketService.getHistoricalData(
         symbol,
         timeframe,
-        parseInt(limit)
+        Math.max(1, Math.min(1000, parseInt(limit, 10) || 100))
       );
       res.json({
         success: true,
@@ -46,7 +46,7 @@ class MarketController {
       const volumeData = await marketService.getVolumeAnalysis(
         symbol,
         timeframe,
-        parseInt(candles)
+        Math.max(1, Math.min(500, parseInt(candles, 10) || 24))
       );
       res.json({
         success: true,
@@ -80,7 +80,7 @@ class MarketController {
   async fetchFreshData(req, res, next) {
     try {
       const { symbol = 'ETH/USDT', timeframe = '1h', limit = 500 } = req.query;
-      await marketService.fetchAndStoreOhlcv(symbol, timeframe, parseInt(limit));
+      await marketService.fetchAndStoreOhlcv(symbol, timeframe, Math.max(1, Math.min(1000, parseInt(limit, 10) || 500)));
       res.json({
         success: true,
         message: 'Data fetched and stored successfully',

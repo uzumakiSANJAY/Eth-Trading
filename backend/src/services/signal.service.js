@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { Op } = require('sequelize');
 const { Signal } = require('../models');
 const marketService = require('./market.service');
 const analysisService = require('./analysis.service');
@@ -48,7 +49,7 @@ class SignalService {
   async _autoClosePreviousSignal(symbol, timeframe, currentPrice) {
     try {
       const previous = await Signal.findOne({
-        where: { symbol, timeframe, status: 'active', signalType: ['BUY', 'SELL'] },
+        where: { symbol, timeframe, status: 'active', signalType: { [Op.in]: ['BUY', 'SELL'] } },
         order: [['createdAt', 'DESC']],
       });
 
@@ -173,7 +174,7 @@ class SignalService {
       );
 
       // --- Risk management ---
-      const atr = parseFloat(indicators.atr);
+      const atr = parseFloat(indicators.atr) || 0; // riskManager guards against 0 ATR internally
       const riskManagement = riskManager.calculateEnhancedRisk(currentPrice, signalDecision.signalType, atr);
 
       // Position sizing (default $10k account, 1.5% risk) — wired into reasoning

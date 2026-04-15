@@ -22,7 +22,7 @@ class RiskManagerService {
 
     // Volatility adjustment: if ATR is high, reduce position size
     const avgPrice = entryPrice;
-    const atrPct = atr / avgPrice * 100;
+    const atrPct = (atr && !isNaN(atr) && avgPrice > 0) ? (atr / avgPrice * 100) : 1.0;
     let volatilityMultiplier = 1.0;
     if (atrPct > 3) volatilityMultiplier = 0.5;       // Very high volatility - halve size
     else if (atrPct > 2) volatilityMultiplier = 0.75;  // High volatility
@@ -50,7 +50,10 @@ class RiskManagerService {
    */
   calculateEnhancedRisk(currentPrice, signalType, atr, _positionSize = null) {
     const atrMultiplier = 1.5;
-    const stopLossDistance = atr * atrMultiplier;
+    // Guard: ATR of 0 or NaN makes stopLoss === currentPrice → division by zero in RRR.
+    // Fall back to 1% of current price as a safe minimum distance.
+    const safeAtr = (atr && !isNaN(atr) && atr > 0) ? atr : currentPrice * 0.01;
+    const stopLossDistance = safeAtr * atrMultiplier;
 
     let stopLoss, takeProfit1, takeProfit2, takeProfit3, entryZoneMin, entryZoneMax;
 

@@ -34,7 +34,7 @@ class SignalsController {
       const signals = await signalService.getSignalHistory(
         symbol,
         timeframe,
-        parseInt(limit)
+        Math.max(1, Math.min(200, parseInt(limit, 10) || 50))
       );
       res.json({
         success: true,
