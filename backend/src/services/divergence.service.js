@@ -48,20 +48,20 @@ class DivergenceService {
     let bearishStrength = 0;
     let bullishStrength = 0;
 
-    // Bearish divergence: last two price highs where price is higher but RSI is lower
+    // Bearish divergence: price makes higher high but RSI makes lower high
     if (priceHighs.length >= 2 && rsiHighs.length >= 2) {
       const ph1 = priceHighs[priceHighs.length - 2];
       const ph2 = priceHighs[priceHighs.length - 1];
-      // Find nearest RSI highs
       const rh1 = rsiHighs.find(p => Math.abs(p.index - ph1.index) <= 5);
       const rh2 = rsiHighs.find(p => Math.abs(p.index - ph2.index) <= 5);
       if (rh1 && rh2 && ph2.value > ph1.value && rh2.value < rh1.value) {
         bearishDiv = true;
-        bearishStrength = ((ph2.value - ph1.value) / ph1.value * 100) + (rh1.value - rh2.value);
+        // Strength = price divergence % only (RSI pts ≠ price %, can't be summed)
+        bearishStrength = parseFloat(((ph2.value - ph1.value) / ph1.value * 100).toFixed(2));
       }
     }
 
-    // Bullish divergence: last two price lows where price is lower but RSI is higher
+    // Bullish divergence: price makes lower low but RSI makes higher low
     if (priceLows.length >= 2 && rsiLows.length >= 2) {
       const pl1 = priceLows[priceLows.length - 2];
       const pl2 = priceLows[priceLows.length - 1];
@@ -69,7 +69,8 @@ class DivergenceService {
       const rl2 = rsiLows.find(p => Math.abs(p.index - pl2.index) <= 5);
       if (rl1 && rl2 && pl2.value < pl1.value && rl2.value > rl1.value) {
         bullishDiv = true;
-        bullishStrength = ((pl1.value - pl2.value) / pl1.value * 100) + (rl2.value - rl1.value);
+        // Strength = price divergence % only
+        bullishStrength = parseFloat(((pl1.value - pl2.value) / pl1.value * 100).toFixed(2));
       }
     }
 
@@ -126,41 +127,24 @@ class DivergenceService {
   }
 
   /**
-   * Main method: analyze divergences from OHLCV + indicator data
+   * Main method: analyze divergences using proper pivot-based detection.
+   * Requires historicalIndicators = { rsi: number[], macd: number[] } from DB.
+   * Falls back to no-divergence if insufficient history is provided.
    */
-  analyzeDivergences(ohlcvData, indicators) {
+  analyzeDivergences(ohlcvData, indicators, historicalIndicators = null) {
     try {
       const closes = ohlcvData.map(d => parseFloat(d.close));
-      // We need RSI and MACD values - extract from indicator history
-      // For now use what we have in the latest indicator + estimate from closes pattern
-      const rsiDiv = { bearish: false, bullish: false, signal: 'none', bearishStrength: 0, bullishStrength: 0 };
-      const macdDiv = { bearish: false, bullish: false, signal: 'none' };
 
-      // If we have enough close data, compute simplified divergence check
-      // using last 20 bars of closes as proxy (real impl needs historical indicator values)
-      if (closes.length >= 20) {
-        // Check last 10 bars: is price making higher highs while momentum is slowing?
-        const last10 = closes.slice(-10);
-        const first5avg = (last10[0] + last10[1] + last10[2] + last10[3] + last10[4]) / 5;
-        const last5avg = (last10[5] + last10[6] + last10[7] + last10[8] + last10[9]) / 5;
-        const priceSlope = (last5avg - first5avg) / first5avg * 100;
+      let rsiDiv  = { bearish: false, bullish: false, signal: 'none', bearishStrength: 0, bullishStrength: 0 };
+      let macdDiv = { bearish: false, bullish: false, signal: 'none' };
 
-        // Use current RSI as proxy
-        if (indicators && indicators.rsi) {
-          const rsi = parseFloat(indicators.rsi);
-          // Bearish divergence signal: price rising but RSI overbought and price near recent high
-          if (priceSlope > 1 && rsi > 65 && rsi < 80) {
-            rsiDiv.bearish = true;
-            rsiDiv.signal = 'bearish_divergence';
-            rsiDiv.bearishStrength = parseFloat((priceSlope * (rsi / 70)).toFixed(2));
-          }
-          // Bullish divergence signal: price falling but RSI oversold
-          if (priceSlope < -1 && rsi < 35 && rsi > 20) {
-            rsiDiv.bullish = true;
-            rsiDiv.signal = 'bullish_divergence';
-            rsiDiv.bullishStrength = parseFloat((Math.abs(priceSlope) * (35 / rsi)).toFixed(2));
-          }
-        }
+      if (historicalIndicators && historicalIndicators.rsi.length >= 10) {
+        // Use real pivot-based divergence detection
+        rsiDiv  = this.detectRSIDivergence(closes, historicalIndicators.rsi);
+        macdDiv = this.detectMACDDivergence(closes, historicalIndicators.macd);
+      } else {
+        // Not enough history — log and skip rather than use wrong approximation
+        logger.debug('Divergence: insufficient indicator history, skipping detection');
       }
 
       const combined = {
@@ -169,8 +153,8 @@ class DivergenceService {
         hasBullishDivergence: rsiDiv.bullish || macdDiv.bullish,
         hasBearishDivergence: rsiDiv.bearish || macdDiv.bearish,
         strongSignal: (rsiDiv.bullish && macdDiv.bullish) || (rsiDiv.bearish && macdDiv.bearish),
-        summary: rsiDiv.bullish ? 'Bullish divergence - potential reversal up'
-                : rsiDiv.bearish ? 'Bearish divergence - potential reversal down'
+        summary: (rsiDiv.bullish || macdDiv.bullish) ? 'Bullish divergence - potential reversal up'
+                : (rsiDiv.bearish || macdDiv.bearish) ? 'Bearish divergence - potential reversal down'
                 : 'No divergence detected'
       };
 

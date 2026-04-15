@@ -73,7 +73,7 @@ A production-grade web-based platform for Ethereum spot trading analysis with AI
 
 ### Data Flow
 
-1. **Binance API** → Market Service → PostgreSQL + Redis (10s price cache, 60s OHLCV cache)
+1. **Binance API** → Market Service → PostgreSQL + Redis (4s price cache, 60s OHLCV cache)
 2. **OHLCV** → Analysis Service → 13 technical indicators → PostgreSQL
 3. **Indicators + OHLCV** → Pattern Service → 10 candlestick patterns → PostgreSQL
 4. **Google News RSS** → News Service → Gemini LLM (sentiment) → Redis (30min cache)
@@ -89,7 +89,7 @@ A production-grade web-based platform for Ethereum spot trading analysis with AI
 ### Technical Analysis
 - Multi-timeframe candlestick charts: 1m, 5m, 15m, 30m, 1h, 4h, 1d
 - **13 indicators:** RSI (14-period), MACD (12/26/9), EMA (9/21/50/200), VWAP, ATR, Bollinger Bands (upper/middle/lower), OBV + OBV SMA
-- **10 candlestick patterns:** Doji, Hammer, Inverted Hammer, Shooting Star, Bullish Engulfing, Bearish Engulfing, Morning Star, Evening Star, Three White Soldiers, Three Black Crows
+- **10 candlestick patterns:** Doji, Hammer, Inverted Hammer, Shooting Star, Bullish Engulfing, Bearish Engulfing, Morning Star, Evening Star, Three White Soldiers, Three Black Crows — all using traditional definitions (Three Soldiers/Crows require each candle to open within the prior body, not gap-up)
 - Support & Resistance level calculation with pivot points
 - Market structure analysis (higher highs / higher lows)
 - Divergence detection (price vs RSI, price vs MACD)
@@ -691,32 +691,36 @@ curl -X POST "http://localhost:8001/train" \
 1. Fetch 500+ historical candles from PostgreSQL
 2. Calculate all technical indicators per candle
 3. Engineer 16 ML features (see table below)
-4. Create directional labels (±0.5% 5-candle forward-looking)
-5. Split 80% train / 20% test
+4. Create directional labels (±0.5% 5-candle forward-looking) — only for rows with enough future data; last `look_ahead` rows are excluded to prevent false neutral labels
+5. **Chronological split** — first 80% trains, last 20% tests. Time order is preserved; random shuffling is not used on time-series data
 6. Train XGBoost (`n_estimators=100`, `max_depth=5`, `learning_rate=0.1`, 3 classes)
 7. Evaluate accuracy and classification report
 8. Save `.joblib` model file to `/models/`
+
+> **Note:** The reported accuracy reflects real out-of-sample future data (chronological split), not an inflated in-sample estimate.
 
 **16 Engineered Features:**
 
 | # | Feature | Description |
 |---|---|---|
 | 1 | RSI raw | 14-period RSI value |
-| 2 | RSI normalized | RSI scaled 0–1 |
+| 2 | RSI normalized | (RSI − 50) / 50 → centered around 0 |
 | 3 | MACD | MACD line value |
 | 4 | MACD Signal | Signal line value |
 | 5 | MACD Histogram | MACD − Signal |
 | 6 | EMA 9 | 9-period EMA |
 | 7 | EMA 21 | 21-period EMA |
 | 8 | EMA 50 | 50-period EMA |
-| 9 | EMA 9/50 ratio | Trend momentum ratio |
-| 10 | EMA trend strength | (EMA9 − EMA50) / EMA50 |
+| 9 | EMA 9/50 ratio | EMA9 / EMA50 — trend momentum |
+| 10 | EMA trend strength | (EMA9 − EMA50) / EMA50 × 100 |
 | 11 | VWAP | Volume-weighted average price |
 | 12 | ATR raw | 14-period Average True Range |
-| 13 | ATR normalized | ATR / close price |
-| 14 | Price / EMA9 ratio | Distance from short EMA |
-| 15 | Price / EMA21 ratio | Distance from medium EMA |
-| 16 | Price / VWAP ratio | Distance from VWAP |
+| 13 | ATR normalized | ATR / avg(EMA9,EMA21) × 100 — volatility % |
+| 14 | Price / EMA9 ratio | close / EMA9 — distance from short-term average |
+| 15 | Price / EMA21 ratio | close / EMA21 — distance from medium-term average |
+| 16 | Price / VWAP ratio | close / VWAP — position relative to intraday value |
+
+> Features 14–16 use the actual close price sent from the backend on every prediction call. Training uses the `close` column from the OHLCV join.
 
 Sentiment model retraining is scheduled automatically every Sunday at 3 AM UTC.
 
@@ -727,31 +731,49 @@ Sentiment model retraining is scheduled automatically every Sunday at 3 AM UTC.
 The `signal.service.js` orchestrates the full pipeline:
 
 ```
-1. Fetch latest OHLCV + indicators from DB (or recalculate if stale)
-2. Get candlestick pattern analysis (last 10 patterns)
-3. Fetch news sentiment (Gemini LLM, 30min cache)
-4. Fetch Reddit sentiment (keyword scoring, 15min cache)
-5. Fetch on-chain data (Binance Futures L/S ratios, 5min cache)
-6. Run multi-timeframe analysis (1h + 4h + 1d consensus)
-7. Detect divergences (RSI, MACD vs price)
-8. Calculate support/resistance levels
-9. Analyze market structure (HH/HL trend)
-10. Call ML Service → get direction + confidence (POST /predict)
-11. Apply sentiment boost (+5 pts bullish / -5 pts bearish)
-12. Apply confidence threshold filter (≥65% required)
-13. Apply risk/reward filter (≥2:1 required)
-14. Check circuit breakers (max daily signals, consecutive losses)
-15. Calculate entry zone, stop-loss (1.5×ATR), take-profits (1×/2×/3×ATR)
-16. Build reasoning JSON (all 15 analysis inputs)
-17. Save signal to PostgreSQL
-18. Broadcast via WebSocket to all subscribed clients
+1.  Gate check: 15-min cooldown (Redis) + circuit breaker (daily loss limit)
+2.  Fetch latest OHLCV + indicators from DB (or recalculate if stale)
+    └─ Also fetch last 50 historical indicator rows for divergence detection
+3.  Auto-close previous active signal if current price hit its SL or TP1
+    └─ Records win/loss into circuit breaker (activates on ≥3 losses or ≥3% daily loss)
+4.  Get candlestick pattern analysis (last 5 patterns, capped at +3 score each side)
+5.  Fetch news sentiment (Gemini LLM, 30-min cache)
+6.  Fetch Reddit sentiment (keyword scoring, 15-min cache)
+7.  Fetch on-chain data (Binance Futures L/S ratios, 5-min cache)
+8.  Run multi-timeframe analysis (1h + 4h + 1d consensus)
+9.  Detect RSI + MACD divergence using proper pivot-based detection
+    └─ Compares two consecutive price pivots vs two RSI/MACD pivots
+    └─ Falls back to no-divergence if fewer than 10 historical indicator rows exist
+10. Calculate support/resistance levels
+11. Analyze market structure (HH/HL trend) — can VETO signal on CHoCH
+12. Call ML Service → get direction + confidence (POST /predict, 5s timeout)
+    └─ Fallback: indicator analysis direction at 50% probability
+13. Market Intel scoring — can VETO signal (extreme fear/greed override)
+14. Compute confidence = (ratio × 60) + (magnitude × 35), capped at 95
+    └─ Both alignment ratio AND total score magnitude contribute
+15. Apply confidence threshold filter (≥65% required for BUY/SELL)
+16. Calculate entry zone (±0.3%), stop-loss (1.5×ATR), take-profits (1.5×/3×/5×ATR)
+17. Calculate position sizing (ATR-adjusted, default 1.5% account risk)
+18. Build reasoning JSON (all analysis inputs + score breakdown + position size)
+19. Save signal to PostgreSQL (ALL signal types including HOLD and VETOED)
+20. Set cooldown key in Redis (15-min TTL)
+21. Broadcast BUY/SELL via WebSocket to all subscribed clients
 ```
 
 **Signal Types:**
 - `BUY` — high-confidence bullish signal meeting all filters
 - `SELL` — high-confidence bearish signal meeting all filters
-- `HOLD` — insufficient conviction or conflicting signals
-- `BLOCKED` — circuit breaker active (too many losses/signals today)
+- `HOLD` — insufficient conviction or conflicting signals (saved to DB for audit)
+- `VETOED` — overridden by market structure CHoCH or extreme market intel (saved to DB)
+- `BLOCKED` — circuit breaker active: ≥3 losses today or total daily loss ≥3%
+
+**Confidence Formula:**
+```
+ratio     = max(bullishScore, bearishScore) / totalScore
+magnitude = min(1.0, max(bullishScore, bearishScore) / 14)
+confidence = min(95, (ratio × 60) + (magnitude × 35))
+```
+A signal with `bull=2, bear=1` scores ~49% (HOLD). A signal with `bull=9, bear=3` scores ~80% (BUY). Higher absolute conviction increases confidence, not just the ratio.
 
 ---
 

@@ -52,7 +52,10 @@ class AnalysisService {
 
       const obvValues = OBV.calculate({ close: closes, volume: volumes });
       const obvSmaLength = Math.min(10, obvValues.length);
-      const obvSma = obvValues.slice(-obvSmaLength).reduce((a, b) => a + b, 0) / obvSmaLength;
+      // Guard: empty array → reduce crashes; obvSmaLength=0 → division by zero
+      const obvSma = obvSmaLength > 0
+        ? obvValues.slice(-obvSmaLength).reduce((a, b) => a + b, 0) / obvSmaLength
+        : 0;
 
       const vwap = this.calculateVWAP(ohlcvData.slice(-20));
 
@@ -123,6 +126,24 @@ class AnalysisService {
 
     await setCache(cacheKey, indicator, 60);
     return indicator;
+  }
+
+  /**
+   * Return arrays of historical RSI and MACD histogram values needed for
+   * proper pivot-based divergence detection.
+   */
+  async getIndicatorHistory(symbol = 'ETHUSDT', timeframe = '1h', limit = 50) {
+    const { Op } = require('sequelize');
+    const rows = await Indicator.findAll({
+      where: { symbol, timeframe, rsi: { [Op.not]: null } },
+      order: [['timestamp', 'ASC']],
+      limit,
+      attributes: ['rsi', 'macdHistogram'],
+    });
+    return {
+      rsi:  rows.map(r => parseFloat(r.rsi)),
+      macd: rows.map(r => parseFloat(r.macdHistogram || 0)),
+    };
   }
 
   async analyzeIndicators(indicator) {

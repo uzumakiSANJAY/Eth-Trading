@@ -5,18 +5,27 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Module-level singleton — creating a new engine per call leaks connection pool resources
+_engine = None
+
+def _get_engine():
+    global _engine
+    if _engine is None:
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            _engine = create_engine(database_url, pool_pre_ping=True)
+    return _engine
+
 
 async def get_training_data(symbol='ETHUSDT', timeframe='1h', limit=500):
     """
     Fetch training data from PostgreSQL database
     """
     try:
-        database_url = os.getenv('DATABASE_URL')
-        if not database_url:
+        engine = _get_engine()
+        if not engine:
             logger.warning("DATABASE_URL not set, using mock data")
             return create_mock_data(limit)
-
-        engine = create_engine(database_url)
 
         query = text("""
             SELECT
@@ -63,7 +72,8 @@ async def get_training_data(symbol='ETHUSDT', timeframe='1h', limit=500):
 
         df = df.sort_values('timestamp').reset_index(drop=True)
 
-        df = df.fillna(method='ffill').fillna(method='bfill')
+        # fillna(method=...) is deprecated in pandas >= 2.0
+        df = df.ffill().bfill()
 
         logger.info(f"Fetched {len(df)} rows from database")
         return df

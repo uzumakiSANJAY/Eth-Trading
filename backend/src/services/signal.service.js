@@ -108,7 +108,10 @@ class SignalService {
       // Auto-close previous signal now that we have a fresh price
       await this._autoClosePreviousSignal(symbol, timeframe, currentPrice);
 
-      const indicators = await analysisService.getLatestIndicators(symbol, timeframe);
+      const [indicators, indicatorHistory] = await Promise.all([
+        analysisService.getLatestIndicators(symbol, timeframe),
+        analysisService.getIndicatorHistory(symbol, timeframe, 50),
+      ]);
       const indicatorAnalysis = await analysisService.analyzeIndicators(indicators);
 
       // --- Run all analysis in parallel ---
@@ -157,7 +160,7 @@ class SignalService {
       const onchainData = onchainResult?.status === 'fulfilled' ? onchainResult.value : null;
 
       // --- Advanced analysis (uses ohlcvData) ---
-      const divergence = divergenceService.analyzeDivergences(ohlcvData, indicators);
+      const divergence = divergenceService.analyzeDivergences(ohlcvData, indicators, indicatorHistory);
       const srLevels = srService.calculateLevels(ohlcvData, currentPrice);
       const structure = structureService.analyzeStructure(ohlcvData);
       const volumeProfile = riskManager.calculateVolumeProfile(ohlcvData);

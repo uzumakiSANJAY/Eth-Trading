@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -24,9 +25,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
+_BACKEND_URL = os.getenv('BACKEND_URL', 'http://localhost:3001')
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[_BACKEND_URL],  # ML service should only be reachable from the backend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

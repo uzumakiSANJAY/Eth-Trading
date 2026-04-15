@@ -47,13 +47,10 @@ class PatternService {
         if (threeCandlePattern) patterns.push(threeCandlePattern);
       }
 
-      for (const pattern of patterns) {
-        await Pattern.create({
-          symbol,
-          timeframe,
-          timestamp: latestCandle.timestamp,
-          ...pattern,
-        });
+      if (patterns.length > 0) {
+        await Pattern.bulkCreate(
+          patterns.map(p => ({ symbol, timeframe, timestamp: latestCandle.timestamp, ...p }))
+        );
       }
 
       logger.info(`Detected ${patterns.length} patterns for ${symbol} ${timeframe}`);
@@ -202,12 +199,14 @@ class PatternService {
     const c3Close = parseFloat(candle3.close);
     const c3Open = parseFloat(candle3.open);
 
+    // Traditional definition: each candle opens WITHIN the prior candle's body
+    // (not gap-up/gap-down which was too strict and rejected valid patterns)
     if (
       c1Close > c1Open &&
       c2Close > c2Open &&
       c3Close > c3Open &&
-      c2Open > c1Close &&
-      c3Open > c2Close
+      c2Open >= c1Open && c2Open <= c1Close &&
+      c3Open >= c2Open && c3Open <= c2Close
     ) {
       return {
         patternType: 'three_white_soldiers',
@@ -221,8 +220,8 @@ class PatternService {
       c1Close < c1Open &&
       c2Close < c2Open &&
       c3Close < c3Open &&
-      c2Open < c1Close &&
-      c3Open < c2Close
+      c2Open <= c1Open && c2Open >= c1Close &&
+      c3Open <= c2Open && c3Open >= c2Close
     ) {
       return {
         patternType: 'three_black_crows',

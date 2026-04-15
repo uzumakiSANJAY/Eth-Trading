@@ -3,18 +3,12 @@ const logger = require('../utils/logger');
 const marketService = require('../services/market.service');
 
 let priceUpdateInterval = null;
+let connectedClients = 0;
 
 function initWebSocket(io) {
-  const exchange = new ccxt.binance({
-    enableRateLimit: true,
-    options: {
-      adjustForTimeDifference: true,
-      recvWindow: 5000,
-    },
-  });
-
   io.on('connection', (socket) => {
-    logger.info(`Client connected: ${socket.id}`);
+    connectedClients++;
+    logger.info(`Client connected: ${socket.id} (total: ${connectedClients})`);
 
     socket.emit('connected', {
       message: 'Connected to ETH Trading Platform',
@@ -27,6 +21,7 @@ function initWebSocket(io) {
 
       socket.join(`${symbol}_${timeframe}`);
 
+      // Start interval only once — cleared when last client disconnects
       if (!priceUpdateInterval) {
         priceUpdateInterval = setInterval(async () => {
           try {
@@ -61,7 +56,15 @@ function initWebSocket(io) {
     });
 
     socket.on('disconnect', () => {
-      logger.info(`Client disconnected: ${socket.id}`);
+      connectedClients = Math.max(0, connectedClients - 1);
+      logger.info(`Client disconnected: ${socket.id} (remaining: ${connectedClients})`);
+
+      // Stop broadcasting when no clients remain — saves CPU and Binance API calls
+      if (connectedClients === 0 && priceUpdateInterval) {
+        clearInterval(priceUpdateInterval);
+        priceUpdateInterval = null;
+        logger.info('All clients disconnected — price update interval cleared');
+      }
     });
   });
 
