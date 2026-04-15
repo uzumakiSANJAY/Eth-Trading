@@ -3,9 +3,7 @@ import joblib
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report
 from xgboost import XGBClassifier
 import logging
 
@@ -49,9 +47,11 @@ class ModelTrainer:
             if len(features) < 100:
                 raise ValueError("Not enough valid feature samples")
 
-            X_train, X_test, y_train, y_test = train_test_split(
-                features, labels, test_size=0.2, random_state=42, stratify=labels
-            )
+            # Chronological split — never shuffle time-series data.
+            # Random split leaks future data into training set, inflating accuracy.
+            split_idx = int(len(features) * 0.8)
+            X_train, X_test = features[:split_idx], features[split_idx:]
+            y_train, y_test = labels[:split_idx], labels[split_idx:]
 
             logger.info(f"Training set size: {len(X_train)}, Test set size: {len(X_test)}")
 

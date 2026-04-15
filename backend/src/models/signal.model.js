@@ -16,7 +16,7 @@ const Signal = sequelize.define('Signal', {
     allowNull: false,
   },
   signalType: {
-    type: DataTypes.ENUM('BUY', 'SELL', 'HOLD'),
+    type: DataTypes.ENUM('BUY', 'SELL', 'HOLD', 'BLOCKED', 'VETOED'),
     allowNull: false,
   },
   status: {

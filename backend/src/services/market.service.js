@@ -42,7 +42,8 @@ class MarketService {
     try {
       const ticker = await this.exchange.fetchTicker(symbol);
       const price = ticker.last;
-      await setCache(cacheKey, price, 10);
+      // TTL 4s — shorter than WebSocket interval (5s) so every broadcast gets a fresh price
+      await setCache(cacheKey, price, 4);
       return price;
     } catch (error) {
       logger.error(`Failed to fetch current price: ${error.message}`);
@@ -67,11 +68,11 @@ class MarketService {
         volume: candle[5],
       }));
 
-      for (const record of records) {
-        await Ohlcv.upsert(record, {
-          conflictFields: ['symbol', 'timeframe', 'timestamp'],
-        });
-      }
+      // Bulk upsert — one query instead of 500 sequential round trips
+      await Ohlcv.bulkCreate(records, {
+        updateOnDuplicate: ['open', 'high', 'low', 'close', 'volume'],
+        conflictAttributes: ['symbol', 'timeframe', 'timestamp'],
+      });
 
       logger.info(`Stored ${records.length} ${timeframe} candles for ${symbol}`);
       return records;
@@ -105,28 +106,42 @@ class MarketService {
   }
 
   async get24hStats(symbol = 'ETHUSDT') {
-    const data = await Ohlcv.findAll({
-      where: { symbol, timeframe: '1h' },
-      order: [['timestamp', 'DESC']],
-      limit: 24,
-    });
-
-    if (data.length === 0) return null;
-
-    let highCandle = data[0];
-    let lowCandle = data[0];
-
-    for (const candle of data) {
-      if (parseFloat(candle.high) > parseFloat(highCandle.high)) highCandle = candle;
-      if (parseFloat(candle.low) < parseFloat(lowCandle.low)) lowCandle = candle;
+    // Use Binance's live 24h ticker — accurate even if local DB has gaps
+    const formattedSymbol = symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
+    try {
+      await this._ensureTimeSync();
+      const ticker = await this.exchange.fetchTicker(formattedSymbol);
+      return {
+        high: ticker.high,
+        low: ticker.low,
+        open: ticker.open,
+        close: ticker.close,
+        volume: ticker.baseVolume,
+        quoteVolume: ticker.quoteVolume,
+        change: ticker.change,
+        changePercent: ticker.percentage,
+      };
+    } catch (err) {
+      logger.warn(`Live 24h stats failed, falling back to DB: ${err.message}`);
+      const data = await Ohlcv.findAll({
+        where: { symbol, timeframe: '1h' },
+        order: [['timestamp', 'DESC']],
+        limit: 24,
+      });
+      if (data.length === 0) return null;
+      let highCandle = data[0];
+      let lowCandle = data[0];
+      for (const candle of data) {
+        if (parseFloat(candle.high) > parseFloat(highCandle.high)) highCandle = candle;
+        if (parseFloat(candle.low) < parseFloat(lowCandle.low)) lowCandle = candle;
+      }
+      return {
+        high: parseFloat(highCandle.high),
+        highTime: highCandle.timestamp,
+        low: parseFloat(lowCandle.low),
+        lowTime: lowCandle.timestamp,
+      };
     }
-
-    return {
-      high: parseFloat(highCandle.high),
-      highTime: highCandle.timestamp,
-      low: parseFloat(lowCandle.low),
-      lowTime: lowCandle.timestamp,
-    };
   }
 
   async getVolumeAnalysis(symbol = 'ETHUSDT', timeframe = '1h', candles = 24) {

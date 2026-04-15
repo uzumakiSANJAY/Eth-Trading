@@ -32,7 +32,8 @@ class FeatureEngineer:
 
     def prepare_features_for_prediction(self, indicators: Dict[str, float]) -> Dict[str, Any]:
         """
-        Prepare features from indicators for prediction
+        Prepare features from indicators for prediction.
+        Expects 'close' (current price) in indicators dict; falls back to vwap.
         """
         try:
             rsi = indicators.get('rsi', 50.0)
@@ -43,6 +44,8 @@ class FeatureEngineer:
             ema50 = indicators.get('ema50', 0.0)
             vwap = indicators.get('vwap', 0.0)
             atr = indicators.get('atr', 0.0)
+            # Use actual close price; backend sends it as 'close'. Fall back to vwap.
+            price = indicators.get('close') or vwap or 0.0
 
             macd_histogram = macd - macd_signal if macd and macd_signal else 0.0
 
@@ -55,11 +58,11 @@ class FeatureEngineer:
             else:
                 ema_trend_strength = 0.0
 
-            price_to_ema9 = (vwap / ema9) if vwap and ema9 and ema9 != 0 else 1.0
-            price_to_ema21 = (vwap / ema21) if vwap and ema21 and ema21 != 0 else 1.0
-            price_to_vwap = 1.0
+            price_to_ema9  = (price / ema9)  if price and ema9  and ema9  != 0 else 1.0
+            price_to_ema21 = (price / ema21) if price and ema21 and ema21 != 0 else 1.0
+            price_to_vwap  = (price / vwap)  if price and vwap  and vwap  != 0 else 1.0
 
-            avg_price = (ema9 + ema21) / 2 if ema9 and ema21 else vwap if vwap else 1.0
+            avg_price = (ema9 + ema21) / 2 if ema9 and ema21 else price if price else 1.0
             atr_normalized = (atr / avg_price) * 100 if atr and avg_price and avg_price != 0 else 0.0
 
             features = {
@@ -90,7 +93,8 @@ class FeatureEngineer:
 
     def extract_features_from_dataframe(self, df):
         """
-        Extract features from a pandas DataFrame with OHLCV and indicators
+        Extract features from a pandas DataFrame with OHLCV and indicators.
+        'close' column is passed so price_to_ema / price_to_vwap use real price.
         """
         try:
             features = []
@@ -105,6 +109,7 @@ class FeatureEngineer:
                     'ema50': row.get('ema50', 0.0),
                     'vwap': row.get('vwap', 0.0),
                     'atr': row.get('atr', 0.0),
+                    'close': row.get('close', 0.0),  # actual close price for ratio features
                 }
 
                 feature_dict = self.prepare_features_for_prediction(indicators)
@@ -119,9 +124,13 @@ class FeatureEngineer:
     def create_labels(self, df, look_ahead=5, threshold=0.01):
         """
         Create labels for training:
-        1 = price goes up by threshold %
-        -1 = price goes down by threshold %
-        0 = neutral
+         1 = price goes up by threshold%
+        -1 = price goes down by threshold%
+         0 = neutral
+
+        Only generates labels for rows that have enough future data.
+        The caller (model_trainer) trims features to match via min_len.
+        Do NOT pad the trailing rows with neutral — that injects false labels.
         """
         try:
             labels = []
@@ -139,8 +148,8 @@ class FeatureEngineer:
                 else:
                     labels.append(0)
 
-            labels.extend([0] * look_ahead)
-
+            # Return exactly (len(df) - look_ahead) labels.
+            # model_trainer aligns features[:min_len] to labels[:min_len].
             return np.array(labels)
 
         except Exception as e:

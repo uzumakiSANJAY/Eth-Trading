@@ -11,25 +11,92 @@ const structureService = require('./marketStructure.service');
 const riskManager = require('./riskManager.service');
 const redditService = require('./reddit.service');
 const onchainService = require('./onchain.service');
+const { setCache, getCache } = require('../database/config/redis');
 const logger = require('../utils/logger');
+
+// Minimum minutes between signals for the same symbol+timeframe
+const SIGNAL_COOLDOWN_MINUTES = 15;
 
 class SignalService {
   constructor() {
     this.mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:8001';
   }
 
+  /**
+   * Check if a new signal can be generated (cooldown + circuit breaker).
+   * Returns { allowed, reason }.
+   */
+  async _canGenerate(symbol, timeframe) {
+    // 1. Cooldown — prevent duplicate signals within SIGNAL_COOLDOWN_MINUTES
+    const cooldownKey = `signal:cooldown:${symbol}:${timeframe}`;
+    const cooldownHit = await getCache(cooldownKey);
+    if (cooldownHit) {
+      return { allowed: false, reason: `Cooldown active — wait ${SIGNAL_COOLDOWN_MINUTES} min between signals` };
+    }
+
+    // 2. Circuit breaker
+    const cb = await riskManager.checkCircuitBreaker(symbol);
+    if (!cb.allowed) return { allowed: false, reason: cb.reason, dailyStats: cb.session };
+
+    return { allowed: true };
+  }
+
+  /**
+   * Close the previous active BUY/SELL signal if current price has hit its SL or TP.
+   * Records win/loss into the circuit breaker so it actually works.
+   */
+  async _autoClosePreviousSignal(symbol, timeframe, currentPrice) {
+    try {
+      const previous = await Signal.findOne({
+        where: { symbol, timeframe, status: 'active', signalType: ['BUY', 'SELL'] },
+        order: [['createdAt', 'DESC']],
+      });
+
+      if (!previous) return;
+
+      const entry = parseFloat(previous.entryPrice);
+      const sl    = parseFloat(previous.stopLoss);
+      const tp1   = parseFloat(previous.takeProfit1);
+      const isBuy = previous.signalType === 'BUY';
+
+      let hitLevel = null;
+      let won = false;
+
+      if (isBuy) {
+        if (currentPrice <= sl)  { hitLevel = 'SL';  won = false; }
+        else if (currentPrice >= tp1) { hitLevel = 'TP1'; won = true; }
+      } else {
+        if (currentPrice >= sl)  { hitLevel = 'SL';  won = false; }
+        else if (currentPrice <= tp1) { hitLevel = 'TP1'; won = true; }
+      }
+
+      if (!hitLevel) return; // still open
+
+      const pnlPct = ((currentPrice - entry) / entry * 100) * (isBuy ? 1 : -1);
+
+      await previous.update({
+        status: 'closed',
+        closedAt: new Date(),
+        exitPrice: currentPrice,
+        profitLossPercent: parseFloat(pnlPct.toFixed(2)),
+      });
+
+      // Now the circuit breaker actually gets trade results
+      await riskManager.recordTradeResult(symbol, pnlPct, won);
+
+      logger.info(`Auto-closed ${previous.signalType} signal at ${hitLevel}: ${pnlPct.toFixed(2)}%`);
+    } catch (err) {
+      logger.error(`Auto-close previous signal failed: ${err.message}`);
+    }
+  }
+
   async generateSignal(symbol = 'ETHUSDT', timeframe = '1h') {
     try {
-      // --- Circuit breaker check first ---
-      const circuitBreaker = await riskManager.checkCircuitBreaker(symbol);
-      if (!circuitBreaker.allowed) {
-        logger.warn(`Circuit breaker active for ${symbol}: ${circuitBreaker.reason}`);
-        return {
-          signalType: 'BLOCKED',
-          confidence: 0,
-          reason: circuitBreaker.reason,
-          dailyStats: circuitBreaker.session
-        };
+      // --- Gate checks (cooldown + circuit breaker) ---
+      const gate = await this._canGenerate(symbol, timeframe);
+      if (!gate.allowed) {
+        logger.warn(`Signal blocked for ${symbol}: ${gate.reason}`);
+        return { signalType: 'BLOCKED', confidence: 0, reason: gate.reason, dailyStats: gate.dailyStats };
       }
 
       // --- Fetch all base data ---
@@ -37,6 +104,9 @@ class SignalService {
         marketService.getCurrentPrice(symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`),
         marketService.getHistoricalData(symbol, timeframe, 100)
       ]);
+
+      // Auto-close previous signal now that we have a fresh price
+      await this._autoClosePreviousSignal(symbol, timeframe, currentPrice);
 
       const indicators = await analysisService.getLatestIndicators(symbol, timeframe);
       const indicatorAnalysis = await analysisService.analyzeIndicators(indicators);
@@ -65,6 +135,7 @@ class SignalService {
             macdSignal: parseFloat(indicators.macdSignal), ema9: parseFloat(indicators.ema9),
             ema21: parseFloat(indicators.ema21), ema50: parseFloat(indicators.ema50),
             atr: parseFloat(indicators.atr), vwap: parseFloat(indicators.vwap),
+            close: currentPrice, // required for correct price_to_ema / price_to_vwap features
           },
         }, { timeout: 5000 }),
         redditService.getSentiment(),
@@ -98,15 +169,67 @@ class SignalService {
         redditSentiment, onchainData
       );
 
-      if (signalDecision.signalType === 'HOLD' || signalDecision.signalType === 'VETOED') {
-        return signalDecision;
-      }
-
       // --- Risk management ---
       const atr = parseFloat(indicators.atr);
       const riskManagement = riskManager.calculateEnhancedRisk(currentPrice, signalDecision.signalType, atr);
 
-      // --- Save signal ---
+      // Position sizing (default $10k account, 1.5% risk) — wired into reasoning
+      const positionSize = riskManager.calculatePositionSize(10000, 1.5, currentPrice, riskManagement.stopLoss, atr);
+
+      const sharedReasoning = {
+        indicators: indicatorAnalysis.details,
+        patterns: patterns.map(p => ({ type: p.patternType, signal: p.signal, strength: p.strength })),
+        mlPrediction,
+        volumeAnalysis: volumeData.volumeRatio > 1.5 ? 'High volume' : 'Normal volume',
+        newsSentiment: newsSentiment ? { sentiment: newsSentiment.sentiment, score: newsSentiment.score, reason: newsSentiment.reason, impact: newsSentiment.impactLevel } : null,
+        marketIntel: marketIntel ? {
+          fearGreed: marketIntel.fearGreed,
+          fundingRate: marketIntel.fundingRate ? { rate: marketIntel.fundingRate.ratePercent, bias: marketIntel.fundingRate.bias } : null,
+          openInterest: marketIntel.openInterest ? { change: marketIntel.openInterest.change4h, trend: marketIntel.openInterest.trend } : null,
+          btcTrend: marketIntel.btcTrend ? { trend: marketIntel.btcTrend.trend, change: marketIntel.btcTrend.priceChange4h } : null,
+          session: marketIntel.timeFilter ? marketIntel.timeFilter.session : null,
+        } : null,
+        divergence: { hasBullish: divergence.hasBullishDivergence, hasBearish: divergence.hasBearishDivergence, summary: divergence.summary },
+        supportResistance: { nearestSupport: srLevels.nearestSupport, nearestResistance: srLevels.nearestResistance, analysis: srLevels.analysis },
+        marketStructure: { trend: structure.trend, bos: structure.bos, choch: structure.choch, summary: structure.summary },
+        volumeProfile: volumeProfile ? { poc: volumeProfile.poc, vah: volumeProfile.vah, val: volumeProfile.val } : null,
+        redditSentiment: redditSentiment ? {
+          sentiment: redditSentiment.sentiment,
+          score: redditSentiment.score,
+          intensity: redditSentiment.intensity,
+          topTitles: redditSentiment.topTitles?.slice(0, 3)
+        } : null,
+        onchain: onchainData ? {
+          longShortBias: onchainData.longShortRatio?.bias,
+          topTraderBias: onchainData.topTraderRatio?.bias,
+          takerBias: onchainData.takerRatio?.bias,
+          compositeBias: onchainData.compositeBias,
+          tvlTrend: onchainData.defiTVL?.trend
+        } : null,
+        tradeManagement: riskManagement.tradeManagement,
+        positionSizing: positionSize,
+        scoreBreakdown: signalDecision.scoreBreakdown,
+      };
+
+      // --- HOLD / VETOED: save to DB for audit trail, skip setting cooldown ---
+      if (signalDecision.signalType === 'HOLD' || signalDecision.signalType === 'VETOED') {
+        const holdSignal = await Signal.create({
+          symbol, timeframe,
+          signalType: signalDecision.signalType,
+          confidence: signalDecision.confidence,
+          entryPrice: currentPrice,
+          reasoning: {
+            ...sharedReasoning,
+            vetoReason: signalDecision.vetoReason || null,
+          },
+          timestamp: Date.now(),
+          status: 'closed', // not tradeable; mark closed immediately
+        });
+        logger.info(`${signalDecision.signalType} recorded for ${symbol} ${timeframe} (confidence: ${signalDecision.confidence.toFixed(1)}%)`);
+        return holdSignal;
+      }
+
+      // --- Save actionable BUY/SELL signal ---
       const signal = await Signal.create({
         symbol,
         timeframe,
@@ -120,42 +243,17 @@ class SignalService {
         takeProfit2: riskManagement.takeProfit2,
         takeProfit3: riskManagement.takeProfit3,
         riskRewardRatio: riskManagement.riskRewardRatio,
-        reasoning: {
-          indicators: indicatorAnalysis.details,
-          patterns: patterns.map(p => ({ type: p.patternType, signal: p.signal, strength: p.strength })),
-          mlPrediction,
-          volumeAnalysis: volumeData.volumeRatio > 1.5 ? 'High volume' : 'Normal volume',
-          newsSentiment: newsSentiment ? { sentiment: newsSentiment.sentiment, score: newsSentiment.score, reason: newsSentiment.reason, impact: newsSentiment.impactLevel } : null,
-          marketIntel: marketIntel ? {
-            fearGreed: marketIntel.fearGreed,
-            fundingRate: marketIntel.fundingRate ? { rate: marketIntel.fundingRate.ratePercent, bias: marketIntel.fundingRate.bias } : null,
-            openInterest: marketIntel.openInterest ? { change: marketIntel.openInterest.change4h, trend: marketIntel.openInterest.trend } : null,
-            btcTrend: marketIntel.btcTrend ? { trend: marketIntel.btcTrend.trend, change: marketIntel.btcTrend.priceChange4h } : null,
-            session: marketIntel.timeFilter ? marketIntel.timeFilter.session : null,
-          } : null,
-          divergence: { hasBullish: divergence.hasBullishDivergence, hasBearish: divergence.hasBearishDivergence, summary: divergence.summary },
-          supportResistance: { nearestSupport: srLevels.nearestSupport, nearestResistance: srLevels.nearestResistance, analysis: srLevels.analysis },
-          marketStructure: { trend: structure.trend, bos: structure.bos, choch: structure.choch, summary: structure.summary },
-          volumeProfile: volumeProfile ? { poc: volumeProfile.poc, vah: volumeProfile.vah, val: volumeProfile.val } : null,
-          redditSentiment: redditSentiment ? {
-            sentiment: redditSentiment.sentiment,
-            score: redditSentiment.score,
-            intensity: redditSentiment.intensity,
-            topTitles: redditSentiment.topTitles?.slice(0, 3)
-          } : null,
-          onchain: onchainData ? {
-            longShortBias: onchainData.longShortRatio?.bias,
-            topTraderBias: onchainData.topTraderRatio?.bias,
-            takerBias: onchainData.takerRatio?.bias,
-            compositeBias: onchainData.compositeBias,
-            tvlTrend: onchainData.defiTVL?.trend
-          } : null,
-          tradeManagement: riskManagement.tradeManagement,
-          scoreBreakdown: signalDecision.scoreBreakdown,
-        },
+        reasoning: sharedReasoning,
         timestamp: Date.now(),
         status: 'active',
       });
+
+      // Set cooldown so the same symbol+timeframe can't generate again too soon
+      await setCache(
+        `signal:cooldown:${symbol}:${timeframe}`,
+        { generatedAt: Date.now(), signalId: signal.id },
+        SIGNAL_COOLDOWN_MINUTES * 60
+      );
 
       logger.info(`Generated ${signalDecision.signalType} signal for ${symbol} ${timeframe} (confidence: ${signalDecision.confidence.toFixed(1)}%)`);
       return signal;
@@ -174,13 +272,14 @@ class SignalService {
     if (indicatorAnalysis.signal === 'bullish') { bullishScore += 2; scoreBreakdown.push('Indicators: +2 bullish'); }
     if (indicatorAnalysis.signal === 'bearish') { bearishScore += 2; scoreBreakdown.push('Indicators: +2 bearish'); }
 
-    // 2. Patterns (max +n)
-    const bullishPatterns = patterns.filter(p => p.signal === 'bullish').length;
-    const bearishPatterns = patterns.filter(p => p.signal === 'bearish').length;
+    // 2. Patterns (capped at +3 each side — prevents a single candle with many patterns dominating)
+    const MAX_PATTERN_SCORE = 3;
+    const bullishPatterns = Math.min(MAX_PATTERN_SCORE, patterns.filter(p => p.signal === 'bullish').length);
+    const bearishPatterns = Math.min(MAX_PATTERN_SCORE, patterns.filter(p => p.signal === 'bearish').length);
     bullishScore += bullishPatterns;
     bearishScore += bearishPatterns;
-    if (bullishPatterns) scoreBreakdown.push(`Patterns: +${bullishPatterns} bullish`);
-    if (bearishPatterns) scoreBreakdown.push(`Patterns: +${bearishPatterns} bearish`);
+    if (bullishPatterns) scoreBreakdown.push(`Patterns: +${bullishPatterns} bullish (capped at ${MAX_PATTERN_SCORE})`);
+    if (bearishPatterns) scoreBreakdown.push(`Patterns: +${bearishPatterns} bearish (capped at ${MAX_PATTERN_SCORE})`);
 
     // 3. Volume
     if (volumeAnalysis.volumeRatio > 1.5) {
@@ -284,7 +383,16 @@ class SignalService {
     bullishScore = Math.max(0, bullishScore);
     bearishScore = Math.max(0, bearishScore);
     const totalScore = bullishScore + bearishScore;
-    const confidence = totalScore > 0 ? (Math.max(bullishScore, bearishScore) / totalScore) * 100 : 50;
+
+    // Confidence = blend of ratio (alignment) and magnitude (how many signals confirm).
+    // Pure ratio formula (old) gave identical confidence for bull=2/bear=1 and bull=10/bear=5.
+    // Now: higher absolute scores push confidence up, not just the ratio.
+    const MAX_MEANINGFUL_SCORE = 14; // realistic maximum across all 11 factors
+    const ratio = totalScore > 0 ? Math.max(bullishScore, bearishScore) / totalScore : 0.5;
+    const magnitude = Math.min(1.0, Math.max(bullishScore, bearishScore) / MAX_MEANINGFUL_SCORE);
+    const confidence = totalScore > 0
+      ? Math.min(95, (ratio * 60) + (magnitude * 35))
+      : 50;
 
     if (confidence < 65) {
       return { signalType: 'HOLD', confidence, scoreBreakdown, bullishScore, bearishScore };

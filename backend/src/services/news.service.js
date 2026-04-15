@@ -81,16 +81,21 @@ Output ONLY the JSON object:`;
 
     try {
       const res = await axios.post(
-        `${GEMINI_URL}?key=${apiKey}`,
+        GEMINI_URL,
         {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.1,
-            maxOutputTokens: 2048, // thinking model: ~800 thinking + ~200 output, cached 30min so cost is minimal
+            maxOutputTokens: 256, // output is ~80 tokens; 256 is safe ceiling
             candidateCount: 1,
           },
         },
-        { timeout: 35000 } // 2.5-flash thinking takes ~30s
+        {
+          timeout: 35000, // 2.5-flash thinking takes ~30s
+          headers: {
+            'x-goog-api-key': apiKey, // keep key out of URL logs
+          },
+        }
       );
 
       // gemini-2.5-flash returns multiple parts (thought + response); find the non-thought part
