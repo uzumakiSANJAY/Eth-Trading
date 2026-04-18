@@ -52,11 +52,13 @@ class Predictor:
         Create a simple fallback model when no trained model exists
         """
         from sklearn.ensemble import RandomForestClassifier
+        from services.feature_engineering import FeatureEngineer
 
-        logger.warning("Creating fallback model")
+        n_features = len(FeatureEngineer().feature_names)
+        logger.warning(f"Creating fallback model with {n_features} features")
         self.model = RandomForestClassifier(n_estimators=10, random_state=42)
 
-        dummy_X = np.random.rand(100, 16)
+        dummy_X = np.random.rand(100, n_features)
         dummy_y = np.random.randint(0, 3, 100)
         self.model.fit(dummy_X, dummy_y)
 
@@ -93,12 +95,13 @@ class Predictor:
             else:
                 max_prob = 0.6
 
+            # Model trained with remapped labels: 0=down, 1=neutral, 2=up
             direction_map = {
-                -1: -1,
-                0: 0,
-                1: 1
+                0: -1,
+                1: 0,
+                2: 1
             }
-            direction = direction_map.get(prediction_class, 0)
+            direction = direction_map.get(int(prediction_class), 0)
 
             result = {
                 'direction': int(direction),

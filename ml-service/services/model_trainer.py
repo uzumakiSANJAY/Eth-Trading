@@ -44,6 +44,11 @@ class ModelTrainer:
             features = features[:min_len]
             labels = labels[:min_len]
 
+            # XGBoost multi:softprob requires classes [0, 1, 2]
+            # Remap: -1 (down) → 0, 0 (neutral) → 1, 1 (up) → 2
+            label_remap = {-1: 0, 0: 1, 1: 2}
+            labels = np.array([label_remap[int(l)] for l in labels])
+
             if len(features) < 100:
                 raise ValueError("Not enough valid feature samples")
 
