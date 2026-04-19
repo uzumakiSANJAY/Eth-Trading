@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import dayjs from 'dayjs';
 import { RefreshCw, Zap } from 'lucide-react';
 import TradingViewChart from '../Chart/TradingViewChart';
 import IndicatorsPanel from '../Indicators/IndicatorsPanel';
@@ -147,16 +148,20 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between space-x-4">
                   <span className="text-xs text-green-600 font-semibold">H</span>
                   <span className="text-sm font-bold text-green-600">${stats24h.high.toFixed(2)}</span>
-                  <span className="text-xs text-gray-400">
-                    {new Date(Number(stats24h.highTime)).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                  {stats24h.highTime && (
+                    <span className="text-xs text-gray-400">
+                      {dayjs(Number(stats24h.highTime)).format('MMM D, HH:mm')}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between space-x-4">
                   <span className="text-xs text-red-500 font-semibold">L</span>
                   <span className="text-sm font-bold text-red-500">${stats24h.low.toFixed(2)}</span>
-                  <span className="text-xs text-gray-400">
-                    {new Date(Number(stats24h.lowTime)).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                  {stats24h.lowTime && (
+                    <span className="text-xs text-gray-400">
+                      {dayjs(Number(stats24h.lowTime)).format('MMM D, HH:mm')}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

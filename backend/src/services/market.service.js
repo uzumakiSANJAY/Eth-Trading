@@ -110,10 +110,32 @@ class MarketService {
     const formattedSymbol = symbol.includes('/') ? symbol : `${symbol.slice(0, 3)}/${symbol.slice(3)}`;
     try {
       await this._ensureTimeSync();
-      const ticker = await this.exchange.fetchTicker(formattedSymbol);
+      const [ticker, candles] = await Promise.all([
+        this.exchange.fetchTicker(formattedSymbol),
+        Ohlcv.findAll({
+          where: { symbol, timeframe: '1h' },
+          order: [['timestamp', 'DESC']],
+          limit: 24,
+        }),
+      ]);
+
+      let highTime, lowTime;
+      if (candles.length > 0) {
+        let highCandle = candles[0];
+        let lowCandle = candles[0];
+        for (const candle of candles) {
+          if (parseFloat(candle.high) > parseFloat(highCandle.high)) highCandle = candle;
+          if (parseFloat(candle.low) < parseFloat(lowCandle.low)) lowCandle = candle;
+        }
+        highTime = highCandle.timestamp;
+        lowTime = lowCandle.timestamp;
+      }
+
       return {
         high: ticker.high,
+        highTime,
         low: ticker.low,
+        lowTime,
         open: ticker.open,
         close: ticker.close,
         volume: ticker.baseVolume,
