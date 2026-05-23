@@ -68,4 +68,15 @@ export const signalsAPI = {
     api.get('/api/signals/news-sentiment', { timeout: 15000 }),
 };
 
+export const reviewAPI = {
+  getDailyReview: (symbol = 'ETHUSDT', timeframe = '1h') =>
+    api.get('/api/review/daily', { params: { symbol, timeframe }, timeout: 20000 }),
+
+  getBreakouts: (symbol = 'ETHUSDT', timeframe = '1h') =>
+    api.get('/api/review/breakouts', { params: { symbol, timeframe }, timeout: 15000 }),
+
+  getMissedOpportunities: (symbol = 'ETHUSDT', timeframe = '1h') =>
+    api.get('/api/review/missed', { params: { symbol, timeframe }, timeout: 15000 }),
+};
+
 export default api;

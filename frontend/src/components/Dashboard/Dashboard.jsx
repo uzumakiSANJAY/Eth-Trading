@@ -6,7 +6,8 @@ import IndicatorsPanel from '../Indicators/IndicatorsPanel';
 import SignalCard from '../Signals/SignalCard';
 import MultiTimeframePanel from '../MultiTimeframe/MultiTimeframePanel';
 import NewsSentimentPanel from '../Signals/NewsSentimentPanel';
-import { marketAPI, analysisAPI, signalsAPI } from '../../services/api';
+import DailyReviewPanel from '../Review/DailyReviewPanel';
+import { marketAPI, analysisAPI, signalsAPI, reviewAPI } from '../../services/api';
 import { useWebSocketStore } from '../../services/websocket';
 
 const Dashboard = () => {
@@ -23,6 +24,9 @@ const Dashboard = () => {
   const [loadingNews, setLoadingNews] = useState(false);
   const [newsError, setNewsError] = useState(false);
   const [stats24h, setStats24h] = useState(null);
+  const [dailyReview, setDailyReview] = useState(null);
+  const [loadingReview, setLoadingReview] = useState(false);
+  const [reviewError, setReviewError] = useState(false);
 
   const { currentPrice, isConnected } = useWebSocketStore();
 
@@ -126,6 +130,20 @@ const Dashboard = () => {
       alert('Failed to fetch multi-timeframe analysis. Please try again.');
     } finally {
       setLoadingMtf(false);
+    }
+  };
+
+  const fetchDailyReview = async () => {
+    setLoadingReview(true);
+    setReviewError(false);
+    try {
+      const response = await reviewAPI.getDailyReview('ETHUSDT', timeframe);
+      setDailyReview(response.data.data);
+    } catch (error) {
+      console.error('Error fetching daily review:', error);
+      setReviewError(true);
+    } finally {
+      setLoadingReview(false);
     }
   };
 
@@ -251,6 +269,34 @@ const Dashboard = () => {
           </div>
 
           {mtfAnalysis && <MultiTimeframePanel data={mtfAnalysis} />}
+
+          <div className="card bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-300">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Daily Market Review</h3>
+                <p className="text-sm text-gray-500">
+                  Patterns, breakouts, missed trades & loss optimization for today
+                </p>
+              </div>
+              <button
+                onClick={fetchDailyReview}
+                disabled={loadingReview || loading}
+                className="btn-primary flex items-center space-x-2 bg-slate-700 hover:bg-slate-800"
+              >
+                <Zap className={`w-4 h-4 ${loadingReview ? 'animate-pulse' : ''}`} />
+                <span>{loadingReview ? 'Reviewing...' : 'Run Daily Review'}</span>
+              </button>
+            </div>
+          </div>
+
+          {(dailyReview || loadingReview || reviewError) && (
+            <DailyReviewPanel
+              data={dailyReview}
+              loading={loadingReview}
+              error={reviewError}
+              onRefresh={fetchDailyReview}
+            />
+          )}
 
           <SignalCard signal={signal} />
         </div>
