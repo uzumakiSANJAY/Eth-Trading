@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import dayjs from 'dayjs';
-import { RefreshCw, Zap } from 'lucide-react';
+import { RefreshCw, Zap, Activity, StopCircle } from 'lucide-react';
 import TradingViewChart from '../Chart/TradingViewChart';
 import IndicatorsPanel from '../Indicators/IndicatorsPanel';
 import SignalCard from '../Signals/SignalCard';
@@ -27,14 +27,24 @@ const Dashboard = () => {
   const [dailyReview, setDailyReview] = useState(null);
   const [loadingReview, setLoadingReview] = useState(false);
   const [reviewError, setReviewError] = useState(false);
+  const [autoEnabled, setAutoEnabled] = useState(true);
+  const [togglingAuto, setTogglingAuto] = useState(false);
 
-  const { currentPrice, isConnected } = useWebSocketStore();
+  const { currentPrice, isConnected, autoSignal, autoMtf, autoReview, autoLastUpdated } = useWebSocketStore();
 
   useEffect(() => {
     fetchAllData();
     fetchNewsSentiment();
     fetch24hStats();
   }, [timeframe]);
+
+  // Auto-update: when the backend 20s cycle pushes data via WebSocket, sync it into panels
+  useEffect(() => {
+    if (!autoLastUpdated) return;
+    if (autoSignal)  setSignal(autoSignal);
+    if (autoMtf)     setMtfAnalysis(autoMtf);
+    if (autoReview)  setDailyReview(autoReview);
+  }, [autoLastUpdated]);
 
   const fetch24hStats = async () => {
     try {
@@ -147,6 +157,19 @@ const Dashboard = () => {
     }
   };
 
+  const toggleAutoAnalysis = async () => {
+    setTogglingAuto(true);
+    try {
+      const next = !autoEnabled;
+      await reviewAPI.setAutoAnalysis(next ? 'start' : 'stop');
+      setAutoEnabled(next);
+    } catch (err) {
+      console.error('Failed to toggle auto-analysis:', err);
+    } finally {
+      setTogglingAuto(false);
+    }
+  };
+
   const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
   return (
@@ -227,32 +250,107 @@ const Dashboard = () => {
         <div className="lg:col-span-2 space-y-6">
           <TradingViewChart data={ohlcvData} indicators={indicators} />
 
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Generate Trading Signal</h3>
-              <button
-                onClick={handleGenerateSignal}
-                disabled={generatingSignal || loading}
-                className="btn-primary flex items-center space-x-2"
-              >
-                <Zap className={`w-4 h-4 ${generatingSignal ? 'animate-pulse' : ''}`} />
-                <span>{generatingSignal ? 'Analyzing...' : 'Generate Signal'}</span>
-              </button>
+          {/* ── Global Auto-Analysis Control Bar ── */}
+          <div className={`card border-2 ${autoEnabled ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-50'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {autoEnabled ? (
+                  <span className="relative flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500" />
+                  </span>
+                ) : (
+                  <span className="inline-flex rounded-full h-4 w-4 bg-gray-400" />
+                )}
+                <div>
+                  <p className="text-base font-bold text-gray-900">
+                    {autoEnabled ? '🔄 Auto-Analysis Active' : '⏸ Auto-Analysis Paused'}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {autoEnabled
+                      ? 'Signal · Multi-Timeframe · Daily Review — all updating every 20s'
+                      : 'Click Start to enable 20-second auto-refresh for all panels'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3">
+                {autoLastUpdated && (
+                  <div className="text-right">
+                    <p className="text-xs text-gray-400">Last cycle</p>
+                    <p className="text-sm font-bold text-gray-700">{dayjs(autoLastUpdated).format('HH:mm:ss')}</p>
+                  </div>
+                )}
+                <button
+                  onClick={toggleAutoAnalysis}
+                  disabled={togglingAuto}
+                  className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-colors ${
+                    autoEnabled
+                      ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {autoEnabled
+                    ? <><StopCircle className="w-4 h-4" /><span>Stop Auto</span></>
+                    : <><Activity className="w-4 h-4" /><span>Start Auto</span></>}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Generate Trading Signal ── */}
+          <div className={`card border-2 ${autoEnabled && autoSignal ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <h3 className="text-lg font-semibold text-gray-900">Generate Trading Signal</h3>
+                {autoEnabled && autoSignal && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                    Live · every 20s
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                {autoLastUpdated && autoSignal && (
+                  <span className="text-xs text-gray-400">
+                    Updated {dayjs(autoLastUpdated).format('HH:mm:ss')}
+                  </span>
+                )}
+                <button
+                  onClick={handleGenerateSignal}
+                  disabled={generatingSignal || loading}
+                  className="btn-primary flex items-center space-x-2"
+                >
+                  <Zap className={`w-4 h-4 ${generatingSignal ? 'animate-pulse' : ''}`} />
+                  <span>{generatingSignal ? 'Analyzing...' : 'Force Refresh'}</span>
+                </button>
+              </div>
             </div>
             <p className="text-sm text-gray-500">
-              Click to analyze current market conditions and generate a trading suggestion based on
-              technical indicators, candlestick patterns, and AI prediction.
+              {autoEnabled
+                ? 'Signal auto-refreshes every 20s via live analysis. Use Force Refresh to trigger immediately.'
+                : 'Click Force Refresh to analyze current market conditions and generate a trading suggestion.'}
             </p>
           </div>
 
-          <div className="card bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200">
-            <div className="flex items-center justify-between mb-4">
+          <SignalCard signal={signal} />
+
+          {/* ── Multi-Timeframe Analysis ── */}
+          <div className={`card border-2 ${autoEnabled && autoMtf ? 'border-indigo-300 bg-indigo-50' : 'border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50'}`}>
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Multi-Timeframe Analysis
-                </h3>
+                <div className="flex items-center space-x-3 mb-1">
+                  <h3 className="text-lg font-semibold text-gray-900">Multi-Timeframe Analysis</h3>
+                  {autoEnabled && autoMtf && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse inline-block" />
+                      Live · every 20s
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">
-                  Combine 15m, 1h, 4h, and 1d into one unified signal
+                  {autoEnabled && autoLastUpdated && autoMtf
+                    ? `Last updated ${dayjs(autoLastUpdated).format('HH:mm:ss')} · Combines 15m, 1h, 4h, 1d`
+                    : 'Combines 15m, 1h, 4h, and 1d into one unified signal'}
                 </p>
               </div>
               <button
@@ -261,44 +359,51 @@ const Dashboard = () => {
                 className="btn-primary flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700"
               >
                 <Zap className={`w-4 h-4 ${loadingMtf ? 'animate-pulse' : ''}`} />
-                <span>
-                  {loadingMtf ? 'Analyzing All Timeframes...' : 'Analyze All Timeframes'}
-                </span>
+                <span>{loadingMtf ? 'Analyzing...' : 'Force Refresh'}</span>
               </button>
             </div>
           </div>
 
-          {mtfAnalysis && <MultiTimeframePanel data={mtfAnalysis} />}
+          {(mtfAnalysis || autoMtf) && <MultiTimeframePanel data={mtfAnalysis || autoMtf} />}
 
-          <div className="card bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-300">
-            <div className="flex items-center justify-between mb-4">
+          {/* ── Daily Market Review ── */}
+          <div className={`card border-2 ${autoEnabled && autoReview ? 'border-slate-400 bg-slate-50' : 'border-slate-300 bg-slate-50'}`}>
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Daily Market Review</h3>
+                <div className="flex items-center space-x-3 mb-1">
+                  <h3 className="text-lg font-semibold text-gray-900">Daily Market Review</h3>
+                  {autoEnabled && autoReview && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-pulse inline-block" />
+                      Live · every 20s
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">
-                  Patterns, breakouts, missed trades & loss optimization for today
+                  {autoEnabled && autoLastUpdated && autoReview
+                    ? `Last updated ${dayjs(autoLastUpdated).format('HH:mm:ss')} · Patterns, breakouts, missed trades & optimization`
+                    : 'Patterns, breakouts, missed trades & loss optimization for today'}
                 </p>
               </div>
               <button
                 onClick={fetchDailyReview}
-                disabled={loadingReview || loading}
-                className="btn-primary flex items-center space-x-2 bg-slate-700 hover:bg-slate-800"
+                disabled={loadingReview}
+                className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-800 font-semibold text-sm"
               >
-                <Zap className={`w-4 h-4 ${loadingReview ? 'animate-pulse' : ''}`} />
-                <span>{loadingReview ? 'Reviewing...' : 'Run Daily Review'}</span>
+                <RefreshCw className={`w-4 h-4 ${loadingReview ? 'animate-spin' : ''}`} />
+                <span>Force Refresh</span>
               </button>
             </div>
           </div>
 
-          {(dailyReview || loadingReview || reviewError) && (
+          {(dailyReview || autoReview || loadingReview || reviewError) && (
             <DailyReviewPanel
-              data={dailyReview}
+              data={dailyReview || autoReview}
               loading={loadingReview}
               error={reviewError}
               onRefresh={fetchDailyReview}
             />
           )}
-
-          <SignalCard signal={signal} />
         </div>
 
         <div className="space-y-6">

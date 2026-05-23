@@ -72,7 +72,7 @@ async function startServer() {
     initWebSocket(io);
     logger.info('WebSocket initialized');
 
-    startScheduledJobs();
+    startScheduledJobs(io);
     logger.info('Scheduled jobs started');
 
     server.listen(PORT, () => {

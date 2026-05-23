@@ -10,11 +10,26 @@ export const useWebSocketStore = create((set) => ({
   currentPrice: null,
   latestSignal: null,
   indicators: null,
+  // auto_update payload from backend 20-second loop
+  autoSignal: null,
+  autoMtf: null,
+  autoReview: null,
+  autoLastUpdated: null,
 
   setConnected: (connected) => set({ isConnected: connected }),
   setCurrentPrice: (price) => set({ currentPrice: price }),
   setLatestSignal: (signal) => set({ latestSignal: signal }),
   setIndicators: (indicators) => set({ indicators }),
+  setAutoUpdate: (payload) => set({
+    autoSignal:      payload.signal,
+    autoMtf:         payload.mtfAnalysis,
+    autoReview:      payload.dailyReview,
+    autoLastUpdated: payload.timestamp,
+    // also keep latestSignal in sync if a real BUY/SELL came in
+    ...(payload.signal?.signalType === 'BUY' || payload.signal?.signalType === 'SELL'
+      ? { latestSignal: payload.signal }
+      : {}),
+  }),
 }));
 
 export const useWebSocket = () => {
@@ -60,6 +75,10 @@ export const useWebSocket = () => {
 
     socket.on('indicator_update', (data) => {
       store.setIndicators(data.indicators);
+    });
+
+    socket.on('auto_update', (payload) => {
+      store.setAutoUpdate(payload);
     });
 
     socket.on('error', (error) => {

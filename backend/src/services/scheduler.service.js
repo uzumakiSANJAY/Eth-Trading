@@ -3,9 +3,72 @@ const axios = require('axios');
 const marketService = require('./market.service');
 const analysisService = require('./analysis.service');
 const patternService = require('./pattern.service');
+const signalService = require('./signal.service');
+const multiTimeframeService = require('./multiTimeframe.service');
+const dailyReviewService = require('./dailyReview.service');
 const logger = require('../utils/logger');
 
-function startScheduledJobs() {
+let _autoInterval = null;
+let _io = null;
+
+async function _runAutoAnalysis() {
+  try {
+    logger.info('[Auto] Running 20s analysis cycle…');
+
+    // 1. Refresh 1h candles + indicators so signals are based on fresh data
+    await marketService.fetchAndStoreOhlcv('ETH/USDT', '1h', 100);
+    await analysisService.calculateAndStoreIndicators('ETHUSDT', '1h');
+    await patternService.detectAndStorePatterns('ETHUSDT', '1h');
+
+    // 2. Run the three main features in parallel (each uses Redis cache where available)
+    const [signalResult, mtfResult, reviewResult] = await Promise.allSettled([
+      signalService.generateSignal('ETHUSDT', '1h'),
+      multiTimeframeService.analyzeMultiTimeframe('ETHUSDT'),
+      dailyReviewService.getDailyReview('ETHUSDT', '1h'),
+    ]);
+
+    const payload = {
+      timestamp: Date.now(),
+      signal:      signalResult.status  === 'fulfilled' ? signalResult.value   : null,
+      mtfAnalysis: mtfResult.status     === 'fulfilled' ? mtfResult.value      : null,
+      dailyReview: reviewResult.status  === 'fulfilled' ? reviewResult.value   : null,
+      errors: {
+        signal:      signalResult.status  === 'rejected' ? signalResult.reason?.message  : null,
+        mtfAnalysis: mtfResult.status     === 'rejected' ? mtfResult.reason?.message     : null,
+        dailyReview: reviewResult.status  === 'rejected' ? reviewResult.reason?.message  : null,
+      },
+    };
+
+    // 3. Broadcast to all connected frontend clients
+    if (_io) {
+      _io.emit('auto_update', payload);
+    }
+
+    logger.info(`[Auto] Cycle complete — signal: ${payload.signal?.signalType ?? 'n/a'}`);
+  } catch (err) {
+    logger.error(`[Auto] Analysis cycle error: ${err.message}`);
+  }
+}
+
+function startAutoAnalysis(io) {
+  _io = io;
+  if (_autoInterval) return; // already running
+  _autoInterval = setInterval(_runAutoAnalysis, 20_000);
+  logger.info('[Auto] 20-second auto-analysis started');
+  // Run immediately on startup so the frontend gets data right away
+  _runAutoAnalysis();
+}
+
+function stopAutoAnalysis() {
+  if (_autoInterval) {
+    clearInterval(_autoInterval);
+    _autoInterval = null;
+    logger.info('[Auto] 20-second auto-analysis stopped');
+  }
+}
+
+function startScheduledJobs(io) {
+  if (io) startAutoAnalysis(io);
   cron.schedule('* * * * *', async () => {
     try {
       await marketService.fetchAndStoreOhlcv('ETH/USDT', '1m', 100);
@@ -90,4 +153,4 @@ function startScheduledJobs() {
   logger.info('Scheduled jobs started successfully');
 }
 
-module.exports = { startScheduledJobs };
+module.exports = { startScheduledJobs, startAutoAnalysis, stopAutoAnalysis };

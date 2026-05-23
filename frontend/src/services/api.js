@@ -77,6 +77,9 @@ export const reviewAPI = {
 
   getMissedOpportunities: (symbol = 'ETHUSDT', timeframe = '1h') =>
     api.get('/api/review/missed', { params: { symbol, timeframe }, timeout: 15000 }),
+
+  setAutoAnalysis: (action) =>
+    api.post('/api/review/auto', { action }),
 };
 
 export default api;
