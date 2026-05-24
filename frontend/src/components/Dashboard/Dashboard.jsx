@@ -7,6 +7,7 @@ import SignalCard from '../Signals/SignalCard';
 import MultiTimeframePanel from '../MultiTimeframe/MultiTimeframePanel';
 import NewsSentimentPanel from '../Signals/NewsSentimentPanel';
 import DailyReviewPanel from '../Review/DailyReviewPanel';
+import PaperTradingPanel from '../PaperTrading/PaperTradingPanel';
 import { marketAPI, analysisAPI, signalsAPI, reviewAPI } from '../../services/api';
 import { useWebSocketStore } from '../../services/websocket';
 
@@ -30,7 +31,7 @@ const Dashboard = () => {
   const [autoEnabled, setAutoEnabled] = useState(true);
   const [togglingAuto, setTogglingAuto] = useState(false);
 
-  const { currentPrice, isConnected, autoSignal, autoMtf, autoReview, autoLastUpdated } = useWebSocketStore();
+  const { currentPrice, isConnected, autoSignal, autoMtf, autoReview, autoPaper, autoLastUpdated } = useWebSocketStore();
 
   useEffect(() => {
     fetchAllData();
@@ -408,6 +409,8 @@ const Dashboard = () => {
 
         <div className="space-y-6">
           <IndicatorsPanel indicators={indicators} analysis={analysis} />
+
+          <PaperTradingPanel livePortfolio={autoPaper} />
 
           <NewsSentimentPanel
             sentiment={newsSentiment}

@@ -13,6 +13,7 @@ const analysisRoutes = require('./routes/analysis.routes');
 const patternsRoutes = require('./routes/patterns.routes');
 const signalsRoutes = require('./routes/signals.routes');
 const reviewRoutes = require('./routes/review.routes');
+const paperTradingRoutes = require('./routes/paperTrading.routes');
 const errorHandler = require('./middleware/error-handler');
 const { initWebSocket } = require('./websocket/websocket-server');
 const { startScheduledJobs } = require('./services/scheduler.service');
@@ -55,6 +56,7 @@ app.use('/api/analysis', analysisRoutes);
 app.use('/api/patterns', patternsRoutes);
 app.use('/api/signals', signalsRoutes);
 app.use('/api/review', reviewRoutes);
+app.use('/api/paper', paperTradingRoutes);
 
 app.use(errorHandler);
 

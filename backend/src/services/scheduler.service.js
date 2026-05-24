@@ -6,6 +6,7 @@ const patternService = require('./pattern.service');
 const signalService = require('./signal.service');
 const multiTimeframeService = require('./multiTimeframe.service');
 const dailyReviewService = require('./dailyReview.service');
+const paperTradingService = require('./paperTrading.service');
 const logger = require('../utils/logger');
 
 let _autoInterval = null;
@@ -27,11 +28,28 @@ async function _runAutoAnalysis() {
       dailyReviewService.getDailyReview('ETHUSDT', '1h'),
     ]);
 
+    const signal      = signalResult.status  === 'fulfilled' ? signalResult.value  : null;
+    const mtfAnalysis = mtfResult.status     === 'fulfilled' ? mtfResult.value     : null;
+    const dailyReview = reviewResult.status  === 'fulfilled' ? reviewResult.value  : null;
+
+    // 3. Paper trading: only monitor SL/TP on open positions (no auto-execution)
+    let paperPortfolio = null;
+    try {
+      const currentPrice = signal?.entryPrice ?? null;
+      if (currentPrice) {
+        await paperTradingService.manageOpenTrades('ETHUSDT', currentPrice);
+      }
+      paperPortfolio = await paperTradingService.getPortfolio('ETHUSDT', currentPrice);
+    } catch (paperErr) {
+      logger.warn(`[Auto] Paper trading cycle error: ${paperErr.message}`);
+    }
+
     const payload = {
       timestamp: Date.now(),
-      signal:      signalResult.status  === 'fulfilled' ? signalResult.value   : null,
-      mtfAnalysis: mtfResult.status     === 'fulfilled' ? mtfResult.value      : null,
-      dailyReview: reviewResult.status  === 'fulfilled' ? reviewResult.value   : null,
+      signal,
+      mtfAnalysis,
+      dailyReview,
+      paperPortfolio,
       errors: {
         signal:      signalResult.status  === 'rejected' ? signalResult.reason?.message  : null,
         mtfAnalysis: mtfResult.status     === 'rejected' ? mtfResult.reason?.message     : null,
@@ -39,12 +57,12 @@ async function _runAutoAnalysis() {
       },
     };
 
-    // 3. Broadcast to all connected frontend clients
+    // 4. Broadcast everything to all connected frontend clients
     if (_io) {
       _io.emit('auto_update', payload);
     }
 
-    logger.info(`[Auto] Cycle complete — signal: ${payload.signal?.signalType ?? 'n/a'}`);
+    logger.info(`[Auto] Cycle complete — signal: ${payload.signal?.signalType ?? 'n/a'} | paper equity: $${paperPortfolio?.totalEquity ?? '?'}`);
   } catch (err) {
     logger.error(`[Auto] Analysis cycle error: ${err.message}`);
   }

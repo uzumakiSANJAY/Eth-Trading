@@ -68,6 +68,23 @@ export const signalsAPI = {
     api.get('/api/signals/news-sentiment', { timeout: 15000 }),
 };
 
+export const paperAPI = {
+  getPortfolio: (symbol = 'ETHUSDT') =>
+    api.get('/api/paper/portfolio', { params: { symbol } }),
+
+  deposit: (symbol = 'ETHUSDT', amount) =>
+    api.post('/api/paper/deposit', { symbol, amount }),
+
+  openTrade: (symbol = 'ETHUSDT', direction, entryPrice, sizeUSD, stopLoss, takeProfit1, takeProfit2) =>
+    api.post('/api/paper/trade', { symbol, direction, entryPrice, sizeUSD, stopLoss, takeProfit1, takeProfit2 }),
+
+  closeTrade: (tradeId, symbol = 'ETHUSDT') =>
+    api.post(`/api/paper/close/${tradeId}`, { symbol }),
+
+  resetAccount: (symbol = 'ETHUSDT') =>
+    api.post('/api/paper/reset', { symbol }),
+};
+
 export const reviewAPI = {
   getDailyReview: (symbol = 'ETHUSDT', timeframe = '1h') =>
     api.get('/api/review/daily', { params: { symbol, timeframe }, timeout: 20000 }),
