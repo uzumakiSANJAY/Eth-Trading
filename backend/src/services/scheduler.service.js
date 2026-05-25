@@ -35,7 +35,9 @@ async function _runAutoAnalysis() {
     // 3. Paper trading: only monitor SL/TP on open positions (no auto-execution)
     let paperPortfolio = null;
     try {
-      const currentPrice = signal?.entryPrice ?? null;
+      let currentPrice = null;
+      try { currentPrice = await marketService.getCurrentPrice('ETH/USDT'); } catch (_) {}
+      if (!currentPrice) currentPrice = signal?.entryPrice ?? null;
       if (currentPrice) {
         await paperTradingService.manageOpenTrades('ETHUSDT', currentPrice);
       }

@@ -410,7 +410,7 @@ const Dashboard = () => {
         <div className="space-y-6">
           <IndicatorsPanel indicators={indicators} analysis={analysis} />
 
-          <PaperTradingPanel livePortfolio={autoPaper} />
+          <PaperTradingPanel livePortfolio={autoPaper} currentPrice={currentPrice} />
 
           <NewsSentimentPanel
             sentiment={newsSentiment}

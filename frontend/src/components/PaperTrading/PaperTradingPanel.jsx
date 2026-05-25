@@ -426,6 +426,32 @@ export default function PaperTradingPanel({ livePortfolio, currentPrice }) {
     if (livePortfolio) setPortfolio(livePortfolio);
   }, [livePortfolio]);
 
+  // Recalculate open-trade PnL locally on every price_update tick
+  useEffect(() => {
+    if (!currentPrice || !portfolio?.openTrades?.length) return;
+    const livePrice = parseFloat(currentPrice);
+    let unrealizedPnL = 0;
+    const updatedOpen = portfolio.openTrades.map(t => {
+      const entry = parseFloat(t.entryPrice);
+      const isBuy = t.direction === 'BUY';
+      const pnlPct = isBuy
+        ? ((livePrice - entry) / entry) * 100
+        : ((entry - livePrice) / entry) * 100;
+      const pnlUSD = parseFloat(t.sizeUSD) * (pnlPct / 100);
+      unrealizedPnL += pnlUSD;
+      return { ...t, livePrice, livePnlPercent: parseFloat(pnlPct.toFixed(2)), livePnlUSD: parseFloat(pnlUSD.toFixed(2)) };
+    });
+    setPortfolio(prev => ({
+      ...prev,
+      openTrades: updatedOpen,
+      unrealizedPnL: parseFloat(unrealizedPnL.toFixed(2)),
+      totalEquity: parseFloat((prev.effectiveBalance + unrealizedPnL).toFixed(2)),
+      totalReturn: prev.totalDeposited > 0
+        ? parseFloat(((prev.effectiveBalance + unrealizedPnL - prev.totalDeposited) / prev.totalDeposited * 100).toFixed(2))
+        : 0,
+    }));
+  }, [currentPrice]);
+
   const handleDeposit = async (amount) => {
     try {
       const res = await paperAPI.deposit('ETHUSDT', amount);
