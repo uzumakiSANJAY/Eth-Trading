@@ -5,7 +5,7 @@ const SignalCard = ({ signal }) => {
   if (!signal) {
     return (
       <div className="card">
-        <p className="text-gray-500">No active signal</p>
+        <p className="text-gray-500 dark:text-gray-400">No active signal</p>
       </div>
     );
   }
@@ -14,23 +14,23 @@ const SignalCard = ({ signal }) => {
     switch (type) {
       case 'BUY':
         return {
-          bg: 'bg-success-50',
+          bg: 'bg-success-50 dark:bg-green-900/20',
           border: 'border-success-500',
-          text: 'text-success-700',
+          text: 'text-success-700 dark:text-green-400',
           icon: <TrendingUp className="w-6 h-6" />,
         };
       case 'SELL':
         return {
-          bg: 'bg-danger-50',
+          bg: 'bg-danger-50 dark:bg-red-900/20',
           border: 'border-danger-500',
-          text: 'text-danger-700',
+          text: 'text-danger-700 dark:text-red-400',
           icon: <TrendingDown className="w-6 h-6" />,
         };
       default:
         return {
-          bg: 'bg-gray-50',
+          bg: 'bg-gray-50 dark:bg-gray-700/50',
           border: 'border-gray-500',
-          text: 'text-gray-700',
+          text: 'text-gray-700 dark:text-gray-300',
           icon: <Minus className="w-6 h-6" />,
         };
     }
@@ -49,96 +49,96 @@ const SignalCard = ({ signal }) => {
             {style.icon}
           </div>
           <div>
-            <h3 className="text-2xl font-bold text-gray-900">{signal.signalType}</h3>
-            <p className="text-sm text-gray-500">
+            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{signal.signalType}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               {signal.symbol} • {signal.timeframe}
             </p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-xs text-gray-500 uppercase mb-1">Confidence</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 uppercase mb-1">Confidence</p>
           <div className="flex items-center space-x-2">
-            <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
                 className={`h-full ${confidence > 75 ? 'bg-success-500' : confidence > 60 ? 'bg-yellow-500' : 'bg-gray-400'}`}
                 style={{ width: `${confidence}%` }}
               />
             </div>
-            <span className="text-lg font-bold text-gray-900">{confidence.toFixed(0)}%</span>
+            <span className="text-lg font-bold text-gray-900 dark:text-white">{confidence.toFixed(0)}%</span>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <div className="p-3 bg-gray-50 rounded-lg">
+        <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
           <div className="flex items-center space-x-2 mb-1">
             <Target className="w-4 h-4 text-primary-600" />
-            <p className="text-xs text-gray-500 uppercase">Entry Price</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Entry Price</p>
           </div>
-          <p className="text-xl font-bold text-gray-900">${entryPrice.toFixed(2)}</p>
+          <p className="text-xl font-bold text-gray-900 dark:text-white">${entryPrice.toFixed(2)}</p>
           {signal.entryZoneMin && signal.entryZoneMax && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Zone: ${parseFloat(signal.entryZoneMin).toFixed(2)} - ${parseFloat(signal.entryZoneMax).toFixed(2)}
             </p>
           )}
         </div>
 
-        <div className="p-3 bg-gray-50 rounded-lg">
+        <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
           <div className="flex items-center space-x-2 mb-1">
             <Shield className="w-4 h-4 text-danger-600" />
-            <p className="text-xs text-gray-500 uppercase">Stop Loss</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Stop Loss</p>
           </div>
           <p className="text-xl font-bold text-danger-600">
             ${stopLoss.toFixed(2)}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {entryPrice > 0 ? Math.abs(((stopLoss - entryPrice) / entryPrice) * 100).toFixed(2) : '0.00'}% risk
           </p>
         </div>
 
-        <div className="p-3 bg-gray-50 rounded-lg">
+        <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
           <div className="flex items-center space-x-2 mb-1">
             <TrendingUp className="w-4 h-4 text-success-600" />
-            <p className="text-xs text-gray-500 uppercase">Take Profit</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Take Profit</p>
           </div>
           <p className="text-xl font-bold text-success-600">
             {signal.takeProfit1 ? `$${parseFloat(signal.takeProfit1).toFixed(2)}` : 'N/A'}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             R/R: {signal.riskRewardRatio ? parseFloat(signal.riskRewardRatio).toFixed(2) : 'N/A'}
           </p>
         </div>
       </div>
 
       {signal.takeProfit2 && signal.takeProfit3 && (
-        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-          <p className="text-xs font-semibold text-gray-700 mb-2">Additional Targets</p>
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">Additional Targets</p>
           <div className="flex justify-between text-sm">
             <div>
-              <p className="text-xs text-gray-500">TP2</p>
-              <p className="font-semibold text-gray-900">${parseFloat(signal.takeProfit2).toFixed(2)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">TP2</p>
+              <p className="font-semibold text-gray-900 dark:text-white">${parseFloat(signal.takeProfit2).toFixed(2)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">TP3</p>
-              <p className="font-semibold text-gray-900">${parseFloat(signal.takeProfit3).toFixed(2)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">TP3</p>
+              <p className="font-semibold text-gray-900 dark:text-white">${parseFloat(signal.takeProfit3).toFixed(2)}</p>
             </div>
           </div>
         </div>
       )}
 
       {signal.reasoning && (
-        <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
           <div className="flex items-start space-x-2">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <h4 className="text-sm font-semibold text-gray-900 mb-2">Signal Reasoning</h4>
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Signal Reasoning</h4>
 
               {signal.reasoning.indicators && (
                 <div className="mb-2">
-                  <p className="text-xs font-medium text-gray-700 mb-1">Technical Indicators:</p>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Technical Indicators:</p>
                   <div className="space-y-1">
                     {Object.entries(signal.reasoning.indicators).map(([key, value]) => (
-                      <p key={key} className="text-xs text-gray-600">
+                      <p key={key} className="text-xs text-gray-600 dark:text-gray-300">
                         • {key}: {typeof value === 'object' ? value.signal || JSON.stringify(value) : value}
                       </p>
                     ))}
@@ -148,10 +148,10 @@ const SignalCard = ({ signal }) => {
 
               {signal.reasoning.patterns && signal.reasoning.patterns.length > 0 && (
                 <div className="mb-2">
-                  <p className="text-xs font-medium text-gray-700 mb-1">Candlestick Patterns:</p>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Candlestick Patterns:</p>
                   <div className="space-y-1">
                     {signal.reasoning.patterns.map((pattern, idx) => (
-                      <p key={idx} className="text-xs text-gray-600">
+                      <p key={idx} className="text-xs text-gray-600 dark:text-gray-300">
                         • {pattern.type} ({pattern.signal}, strength: {pattern.strength})
                       </p>
                     ))}
@@ -161,8 +161,8 @@ const SignalCard = ({ signal }) => {
 
               {signal.reasoning.mlPrediction && (
                 <div className="mb-2">
-                  <p className="text-xs font-medium text-gray-700 mb-1">AI Prediction:</p>
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">AI Prediction:</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300">
                     • Direction: {signal.reasoning.mlPrediction.direction} (
                     {(signal.reasoning.mlPrediction.probability * 100).toFixed(1)}% probability)
                   </p>
@@ -171,8 +171,8 @@ const SignalCard = ({ signal }) => {
 
               {signal.reasoning.volumeAnalysis && (
                 <div>
-                  <p className="text-xs font-medium text-gray-700 mb-1">Volume:</p>
-                  <p className="text-xs text-gray-600">• {signal.reasoning.volumeAnalysis}</p>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Volume:</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300">• {signal.reasoning.volumeAnalysis}</p>
                 </div>
               )}
             </div>
@@ -180,8 +180,8 @@ const SignalCard = ({ signal }) => {
         </div>
       )}
 
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <p className="text-xs text-gray-500">
+      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           Generated: {new Date(signal.createdAt).toLocaleString()}
         </p>
       </div>

@@ -39,7 +39,6 @@ const Dashboard = () => {
     fetch24hStats();
   }, [timeframe]);
 
-  // Auto-update: when the backend 20s cycle pushes data via WebSocket, sync it into panels
   useEffect(() => {
     if (!autoLastUpdated) return;
     if (autoSignal)  setSignal(autoSignal);
@@ -118,10 +117,8 @@ const Dashboard = () => {
     setGeneratingSignal(true);
     try {
       await analysisAPI.calculateIndicators('ETHUSDT', timeframe);
-
       const response = await signalsAPI.generateSignal('ETHUSDT', timeframe);
       setSignal(response.data.data);
-
       await fetchIndicators();
     } catch (error) {
       console.error('Error generating signal:', error);
@@ -177,21 +174,21 @@ const Dashboard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900">Trading Dashboard</h2>
-          <p className="text-gray-500 mt-1">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Trading Dashboard</h2>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             Real-time analysis and AI-powered trading suggestions
           </p>
         </div>
         <div className="flex items-center space-x-3">
           {stats24h && (
-            <div className="px-4 py-2 bg-white rounded-lg shadow">
-              <p className="text-xs text-gray-500 font-medium mb-1">24h Range</p>
+            <div className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow">
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-medium mb-1">24h Range</p>
               <div className="flex flex-col space-y-1">
                 <div className="flex items-center justify-between space-x-4">
                   <span className="text-xs text-green-600 font-semibold">H</span>
                   <span className="text-sm font-bold text-green-600">${stats24h.high.toFixed(2)}</span>
                   {stats24h.highTime && (
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
                       {dayjs(Number(stats24h.highTime)).format('MMM D, HH:mm')}
                     </span>
                   )}
@@ -200,7 +197,7 @@ const Dashboard = () => {
                   <span className="text-xs text-red-500 font-semibold">L</span>
                   <span className="text-sm font-bold text-red-500">${stats24h.low.toFixed(2)}</span>
                   {stats24h.lowTime && (
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
                       {dayjs(Number(stats24h.lowTime)).format('MMM D, HH:mm')}
                     </span>
                   )}
@@ -209,12 +206,12 @@ const Dashboard = () => {
             </div>
           )}
           {currentPrice && (
-            <div className="px-4 py-2 bg-white rounded-lg shadow">
-              <p className="text-xs text-gray-500">Current Price</p>
-              <p className="text-2xl font-bold text-gray-900">${currentPrice.toFixed(2)}</p>
+            <div className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg shadow">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Current Price</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">${currentPrice.toFixed(2)}</p>
               <div className="flex items-center space-x-1 mt-1">
                 <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   {isConnected ? 'Live' : 'Disconnected'}
                 </span>
               </div>
@@ -239,7 +236,7 @@ const Dashboard = () => {
             className={`px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
               timeframe === tf
                 ? 'bg-primary-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100'
+                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           >
             {tf}
@@ -252,7 +249,7 @@ const Dashboard = () => {
           <TradingViewChart data={ohlcvData} indicators={indicators} />
 
           {/* ── Global Auto-Analysis Control Bar ── */}
-          <div className={`card border-2 ${autoEnabled ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-50'}`}>
+          <div className={`card border-2 ${autoEnabled ? 'border-green-400 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 {autoEnabled ? (
@@ -264,10 +261,10 @@ const Dashboard = () => {
                   <span className="inline-flex rounded-full h-4 w-4 bg-gray-400" />
                 )}
                 <div>
-                  <p className="text-base font-bold text-gray-900">
+                  <p className="text-base font-bold text-gray-900 dark:text-white">
                     {autoEnabled ? '🔄 Auto-Analysis Active' : '⏸ Auto-Analysis Paused'}
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
                     {autoEnabled
                       ? 'Signal · Multi-Timeframe · Daily Review — all updating every 20s'
                       : 'Click Start to enable 20-second auto-refresh for all panels'}
@@ -277,8 +274,8 @@ const Dashboard = () => {
               <div className="flex items-center space-x-3">
                 {autoLastUpdated && (
                   <div className="text-right">
-                    <p className="text-xs text-gray-400">Last cycle</p>
-                    <p className="text-sm font-bold text-gray-700">{dayjs(autoLastUpdated).format('HH:mm:ss')}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Last cycle</p>
+                    <p className="text-sm font-bold text-gray-700 dark:text-gray-200">{dayjs(autoLastUpdated).format('HH:mm:ss')}</p>
                   </div>
                 )}
                 <button
@@ -286,7 +283,7 @@ const Dashboard = () => {
                   disabled={togglingAuto}
                   className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg font-bold text-sm transition-colors ${
                     autoEnabled
-                      ? 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-300'
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 border border-red-300 dark:border-red-700'
                       : 'bg-green-600 text-white hover:bg-green-700'
                   }`}
                 >
@@ -299,12 +296,12 @@ const Dashboard = () => {
           </div>
 
           {/* ── Generate Trading Signal ── */}
-          <div className={`card border-2 ${autoEnabled && autoSignal ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
+          <div className={`card border-2 ${autoEnabled && autoSignal ? 'border-blue-300 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600'}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-3">
-                <h3 className="text-lg font-semibold text-gray-900">Generate Trading Signal</h3>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Generate Trading Signal</h3>
                 {autoEnabled && autoSignal && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs font-bold">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse inline-block" />
                     Live · every 20s
                   </span>
@@ -312,7 +309,7 @@ const Dashboard = () => {
               </div>
               <div className="flex items-center space-x-2">
                 {autoLastUpdated && autoSignal && (
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
                     Updated {dayjs(autoLastUpdated).format('HH:mm:ss')}
                   </span>
                 )}
@@ -326,7 +323,7 @@ const Dashboard = () => {
                 </button>
               </div>
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               {autoEnabled
                 ? 'Signal auto-refreshes every 20s via live analysis. Use Force Refresh to trigger immediately.'
                 : 'Click Force Refresh to analyze current market conditions and generate a trading suggestion.'}
@@ -336,19 +333,19 @@ const Dashboard = () => {
           <SignalCard signal={signal} />
 
           {/* ── Multi-Timeframe Analysis ── */}
-          <div className={`card border-2 ${autoEnabled && autoMtf ? 'border-indigo-300 bg-indigo-50' : 'border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50'}`}>
+          <div className={`card border-2 ${autoEnabled && autoMtf ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-900/20' : 'border-indigo-200 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center space-x-3 mb-1">
-                  <h3 className="text-lg font-semibold text-gray-900">Multi-Timeframe Analysis</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Multi-Timeframe Analysis</h3>
                   {autoEnabled && autoMtf && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold">
                       <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse inline-block" />
                       Live · every 20s
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {autoEnabled && autoLastUpdated && autoMtf
                     ? `Last updated ${dayjs(autoLastUpdated).format('HH:mm:ss')} · Combines 15m, 1h, 4h, 1d`
                     : 'Combines 15m, 1h, 4h, and 1d into one unified signal'}
@@ -368,19 +365,19 @@ const Dashboard = () => {
           {(mtfAnalysis || autoMtf) && <MultiTimeframePanel data={mtfAnalysis || autoMtf} />}
 
           {/* ── Daily Market Review ── */}
-          <div className={`card border-2 ${autoEnabled && autoReview ? 'border-slate-400 bg-slate-50' : 'border-slate-300 bg-slate-50'}`}>
+          <div className={`card border-2 ${autoEnabled && autoReview ? 'border-slate-400 bg-slate-50 dark:bg-slate-800/50' : 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center space-x-3 mb-1">
-                  <h3 className="text-lg font-semibold text-gray-900">Daily Market Review</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Daily Market Review</h3>
                   {autoEnabled && autoReview && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-bold">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold">
                       <span className="w-1.5 h-1.5 rounded-full bg-slate-500 animate-pulse inline-block" />
                       Live · every 20s
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   {autoEnabled && autoLastUpdated && autoReview
                     ? `Last updated ${dayjs(autoLastUpdated).format('HH:mm:ss')} · Patterns, breakouts, missed trades & optimization`
                     : 'Patterns, breakouts, missed trades & loss optimization for today'}
@@ -419,9 +416,9 @@ const Dashboard = () => {
             onRefresh={fetchNewsSentiment}
           />
 
-          <div className="card bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200">
-            <h4 className="text-sm font-semibold text-gray-900 mb-2">⚠️ Important Disclaimer</h4>
-            <ul className="space-y-1 text-xs text-gray-700">
+          <div className="card bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-800">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">⚠️ Important Disclaimer</h4>
+            <ul className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
               <li>• This platform provides analysis and suggestions only</li>
               <li>• NO automated trading is performed</li>
               <li>• All trading decisions are your responsibility</li>
@@ -431,37 +428,27 @@ const Dashboard = () => {
             </ul>
           </div>
 
-          <div className="card bg-blue-50">
-            <h4 className="text-sm font-semibold text-gray-900 mb-3">How It Works</h4>
-            <div className="space-y-2 text-xs text-gray-700">
+          <div className="card bg-blue-50 dark:bg-blue-900/20">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">How It Works</h4>
+            <div className="space-y-2 text-xs text-gray-700 dark:text-gray-300">
               <div className="flex items-start space-x-2">
-                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                  1
-                </span>
+                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span>
                 <p>Real-time data fetched from Binance exchange</p>
               </div>
               <div className="flex items-start space-x-2">
-                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                  2
-                </span>
+                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">2</span>
                 <p>Technical indicators calculated (RSI, MACD, EMA, ATR, VWAP)</p>
               </div>
               <div className="flex items-start space-x-2">
-                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                  3
-                </span>
+                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">3</span>
                 <p>Candlestick patterns detected and analyzed</p>
               </div>
               <div className="flex items-start space-x-2">
-                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                  4
-                </span>
+                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">4</span>
                 <p>ML model predicts price direction probability</p>
               </div>
               <div className="flex items-start space-x-2">
-                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">
-                  5
-                </span>
+                <span className="flex-shrink-0 w-5 h-5 bg-primary-600 text-white rounded-full flex items-center justify-center text-xs font-bold">5</span>
                 <p>Signal generated with entry, stop-loss, and take-profit levels</p>
               </div>
             </div>

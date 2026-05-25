@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createChart } from 'lightweight-charts';
+import { useTheme } from '../../contexts/ThemeContext';
 
-// Calculate EMA from an array of closes. Returns one value per input close
-// starting from `period - 1` index (earlier values are null/skipped).
 const calcEMA = (closes, period) => {
   if (!closes || closes.length < period) return [];
   const k = 2 / (period + 1);
@@ -15,6 +14,20 @@ const calcEMA = (closes, period) => {
   return result;
 };
 
+const lightTheme = {
+  layout: { background: { color: '#ffffff' }, textColor: '#333' },
+  grid: { vertLines: { color: '#f0f0f0' }, horzLines: { color: '#f0f0f0' } },
+  rightPriceScale: { borderColor: '#d1d4dc' },
+  timeScale: { borderColor: '#d1d4dc' },
+};
+
+const darkTheme = {
+  layout: { background: { color: '#1f2937' }, textColor: '#d1d5db' },
+  grid: { vertLines: { color: '#374151' }, horzLines: { color: '#374151' } },
+  rightPriceScale: { borderColor: '#4b5563' },
+  timeScale: { borderColor: '#4b5563' },
+};
+
 const TradingViewChart = ({ data, indicators, height = 500 }) => {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -23,32 +36,19 @@ const TradingViewChart = ({ data, indicators, height = 500 }) => {
   const ema21SeriesRef = useRef(null);
   const ema50SeriesRef = useRef(null);
   const volumeSeriesRef = useRef(null);
+  const { isDark } = useTheme();
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    const theme = isDark ? darkTheme : lightTheme;
+
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
       height,
-      layout: {
-        background: { color: '#ffffff' },
-        textColor: '#333',
-      },
-      grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
-      },
-      crosshair: {
-        mode: 0,
-      },
-      rightPriceScale: {
-        borderColor: '#d1d4dc',
-      },
-      timeScale: {
-        borderColor: '#d1d4dc',
-        timeVisible: true,
-        secondsVisible: false,
-      },
+      ...theme,
+      crosshair: { mode: 0 },
+      timeScale: { ...theme.timeScale, timeVisible: true, secondsVisible: false },
     });
 
     chartRef.current = chart;
@@ -64,54 +64,31 @@ const TradingViewChart = ({ data, indicators, height = 500 }) => {
 
     const volumeSeries = chart.addHistogramSeries({
       color: '#26a69a',
-      priceFormat: {
-        type: 'volume',
-      },
+      priceFormat: { type: 'volume' },
       priceScaleId: '',
     });
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: {
-        top: 0.8,
-        bottom: 0,
-      },
-    });
+    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     volumeSeriesRef.current = volumeSeries;
 
-    ema9SeriesRef.current = chart.addLineSeries({
-      color: '#2962FF',
-      lineWidth: 2,
-      title: 'EMA 9',
-    });
-
-    ema21SeriesRef.current = chart.addLineSeries({
-      color: '#FF6D00',
-      lineWidth: 2,
-      title: 'EMA 21',
-    });
-
-    ema50SeriesRef.current = chart.addLineSeries({
-      color: '#9C27B0',
-      lineWidth: 2,
-      title: 'EMA 50',
-    });
+    ema9SeriesRef.current = chart.addLineSeries({ color: '#2962FF', lineWidth: 2, title: 'EMA 9' });
+    ema21SeriesRef.current = chart.addLineSeries({ color: '#FF6D00', lineWidth: 2, title: 'EMA 21' });
+    ema50SeriesRef.current = chart.addLineSeries({ color: '#9C27B0', lineWidth: 2, title: 'EMA 50' });
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
+        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
       }
     };
-
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       if (chartRef.current) {
         chartRef.current.remove();
+        chartRef.current = null;
       }
     };
-  }, [height]);
+  }, [height, isDark]);
 
   useEffect(() => {
     if (!data || data.length === 0 || !candlestickSeriesRef.current) return;
@@ -141,46 +118,33 @@ const TradingViewChart = ({ data, indicators, height = 500 }) => {
   useEffect(() => {
     if (!data || data.length === 0) return;
 
-    // Calculate EMAs from actual candle close prices so the chart shows
-    // real curves, not a flat horizontal line at the latest EMA value.
     const closes = data.map((c) => parseFloat(c.close));
 
     if (ema9SeriesRef.current) {
       const ema9Points = calcEMA(closes, 9);
       ema9SeriesRef.current.setData(
-        ema9Points.map(({ startIdx, value }) => ({
-          time: Math.floor(data[startIdx].timestamp / 1000),
-          value,
-        }))
+        ema9Points.map(({ startIdx, value }) => ({ time: Math.floor(data[startIdx].timestamp / 1000), value }))
       );
     }
-
     if (ema21SeriesRef.current) {
       const ema21Points = calcEMA(closes, 21);
       ema21SeriesRef.current.setData(
-        ema21Points.map(({ startIdx, value }) => ({
-          time: Math.floor(data[startIdx].timestamp / 1000),
-          value,
-        }))
+        ema21Points.map(({ startIdx, value }) => ({ time: Math.floor(data[startIdx].timestamp / 1000), value }))
       );
     }
-
     if (ema50SeriesRef.current) {
       const ema50Points = calcEMA(closes, 50);
       ema50SeriesRef.current.setData(
-        ema50Points.map(({ startIdx, value }) => ({
-          time: Math.floor(data[startIdx].timestamp / 1000),
-          value,
-        }))
+        ema50Points.map(({ startIdx, value }) => ({ time: Math.floor(data[startIdx].timestamp / 1000), value }))
       );
     }
   }, [data]);
 
   return (
-    <div className="w-full bg-white rounded-lg shadow-md p-4">
+    <div className="w-full bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">ETH/USDT Price Chart</h3>
-        <p className="text-sm text-gray-500">Real-time candlestick chart with technical indicators</p>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">ETH/USDT Price Chart</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Real-time candlestick chart with technical indicators</p>
       </div>
       <div ref={chartContainerRef} className="relative" />
     </div>
