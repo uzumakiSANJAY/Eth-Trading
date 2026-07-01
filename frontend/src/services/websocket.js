@@ -15,6 +15,7 @@ export const useWebSocketStore = create((set) => ({
   autoMtf: null,
   autoReview: null,
   autoPaper: null,
+  autoVolatility: null,
   autoLastUpdated: null,
 
   setConnected: (connected) => set({ isConnected: connected }),
@@ -26,6 +27,7 @@ export const useWebSocketStore = create((set) => ({
     autoMtf:         payload.mtfAnalysis,
     autoReview:      payload.dailyReview,
     autoPaper:       payload.paperPortfolio,
+    autoVolatility:  payload.volatility ?? null,
     autoLastUpdated: payload.timestamp,
     ...(payload.signal?.signalType === 'BUY' || payload.signal?.signalType === 'SELL'
       ? { latestSignal: payload.signal }

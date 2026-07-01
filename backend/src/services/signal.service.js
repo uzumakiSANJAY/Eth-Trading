@@ -10,6 +10,7 @@ const divergenceService = require('./divergence.service');
 const srService = require('./supportResistance.service');
 const structureService = require('./marketStructure.service');
 const riskManager = require('./riskManager.service');
+const volatilityService = require('./volatility.service');
 const redditService = require('./reddit.service');
 const onchainService = require('./onchain.service');
 const { setCache, getCache } = require('../database/config/redis');
@@ -183,16 +184,22 @@ class SignalService {
         }
       }
 
+      // --- Volatility regime + BB squeeze (computed before makeSignalDecision so it can adapt thresholds) ---
+      const atrForRegime     = parseFloat(indicators.atr) || 0;
+      const volatilityRegime = volatilityService.classifyRegime(atrForRegime, currentPrice);
+      const bbSqueeze        = volatilityService.detectBBSqueeze(ohlcvData);
+
       // --- Make signal decision ---
       const signalDecision = this.makeSignalDecision(
         indicatorAnalysis, patterns, volumeData, mlPrediction,
         newsSentiment, marketIntel, divergence, srLevels, structure,
-        redditSentiment, onchainData, volumeProfile, currentPrice, htfBias
+        redditSentiment, onchainData, volumeProfile, currentPrice, htfBias,
+        volatilityRegime, bbSqueeze
       );
 
-      // --- Risk management ---
-      const atr = parseFloat(indicators.atr) || 0; // riskManager guards against 0 ATR internally
-      const riskManagement = riskManager.calculateEnhancedRisk(currentPrice, signalDecision.signalType, atr);
+      // --- Risk management (regime-aware SL/TP) ---
+      const atr = atrForRegime; // already parsed above
+      const riskManagement = riskManager.calculateEnhancedRisk(currentPrice, signalDecision.signalType, atr, null, volatilityRegime);
 
       // Position sizing (default $10k account, 1.5% risk) — wired into reasoning
       const positionSize = riskManager.calculatePositionSize(10000, 1.5, currentPrice, riskManagement.stopLoss, atr);
@@ -200,6 +207,11 @@ class SignalService {
       const sharedReasoning = {
         indicators: indicatorAnalysis.details,
         patterns: patterns.map(p => ({ type: p.patternType, signal: p.signal, strength: p.strength })),
+        volatility: {
+          regime:      volatilityRegime,
+          bbSqueeze,
+          description: volatilityService.describe(volatilityRegime, bbSqueeze),
+        },
         mlPrediction,
         volumeAnalysis: volumeData.volumeRatio > 1.5 ? 'High volume' : 'Normal volume',
         newsSentiment: newsSentiment ? { sentiment: newsSentiment.sentiment, score: newsSentiment.score, reason: newsSentiment.reason, impact: newsSentiment.impactLevel } : null,
@@ -284,16 +296,20 @@ class SignalService {
     }
   }
 
-  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure, redditSentiment = null, onchainData = null, volumeProfile = null, currentPrice = null, htfBias = null) {
+  makeSignalDecision(indicatorAnalysis, patterns, volumeAnalysis, mlPrediction, newsSentiment, marketIntel, divergence, srLevels, structure, redditSentiment = null, onchainData = null, volumeProfile = null, currentPrice = null, htfBias = null, volatilityRegime = 'NORMAL', bbSqueeze = {}) {
     try {
     let bullishScore = 0;
     let bearishScore = 0;
     const scoreBreakdown = [];
 
+    // Regime-aware adaptations (min confidence, ADX bypass, etc.)
+    const adaptations = volatilityService.getAdaptations(volatilityRegime, bbSqueeze);
+    scoreBreakdown.push(`Volatility: ${volatilityRegime}${bbSqueeze?.isSqueezing ? ` | BB ${bbSqueeze.intensity} squeeze` : ''}`);
+
     // --- ADX: ranging market filter ---
-    // If ADX < 20 the market is choppy — no reliable trend exists.
-    // Return HOLD immediately; all other indicators are noise in a range.
-    if (indicatorAnalysis.isRanging) {
+    // Bypass during a BB squeeze — ADX is structurally low in a squeeze but the
+    // directional breakout that follows is one of the highest-probability setups.
+    if (indicatorAnalysis.isRanging && !adaptations.bypassAdxFilter) {
       return {
         signalType: 'HOLD',
         confidence: 45,
@@ -302,6 +318,9 @@ class SignalService {
         bearishScore: 0,
         vetoReason: 'ADX < 20: choppy/ranging market',
       };
+    }
+    if (indicatorAnalysis.isRanging && adaptations.bypassAdxFilter) {
+      scoreBreakdown.push('ADX < 20 bypassed — BB squeeze detected, breakout setup active');
     }
 
     // 1. Indicator analysis (max +2)
@@ -469,7 +488,7 @@ class SignalService {
       ? Math.min(95, (ratio * 60) + (magnitude * 35))
       : 50;
 
-    if (confidence < 65) {
+    if (confidence < adaptations.minConfidence) {
       return { signalType: 'HOLD', confidence, scoreBreakdown, bullishScore, bearishScore };
     }
 

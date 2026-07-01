@@ -7,6 +7,7 @@ const signalService = require('./signal.service');
 const multiTimeframeService = require('./multiTimeframe.service');
 const dailyReviewService = require('./dailyReview.service');
 const paperTradingService = require('./paperTrading.service');
+const volatilityService = require('./volatility.service');
 const logger = require('../utils/logger');
 
 let _autoInterval = null;
@@ -46,12 +47,31 @@ async function _runAutoAnalysis() {
       logger.warn(`[Auto] Paper trading cycle error: ${paperErr.message}`);
     }
 
+    // Compute volatility regime from the just-refreshed indicators (cheap — uses Redis cache)
+    let volatilityData = null;
+    try {
+      const volIndicators = await analysisService.getLatestIndicators('ETHUSDT', '1h');
+      const volOhlcv      = await marketService.getHistoricalData('ETHUSDT', '1h', 60);
+      if (volIndicators && volOhlcv) {
+        const atr    = parseFloat(volIndicators.atr) || 0;
+        const price  = signal?.entryPrice ?? null;
+        if (atr && price) {
+          const regime    = volatilityService.classifyRegime(atr, price);
+          const bbSqueeze = volatilityService.detectBBSqueeze(volOhlcv);
+          volatilityData  = { regime, bbSqueeze, description: volatilityService.describe(regime, bbSqueeze) };
+        }
+      }
+    } catch (volErr) {
+      logger.warn(`[Auto] Volatility classification error: ${volErr.message}`);
+    }
+
     const payload = {
       timestamp: Date.now(),
       signal,
       mtfAnalysis,
       dailyReview,
       paperPortfolio,
+      volatility: volatilityData,
       errors: {
         signal:      signalResult.status  === 'rejected' ? signalResult.reason?.message  : null,
         mtfAnalysis: mtfResult.status     === 'rejected' ? mtfResult.reason?.message     : null,

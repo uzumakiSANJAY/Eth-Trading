@@ -44,56 +44,73 @@ class RiskManagerService {
   }
 
   /**
-   * Enhanced risk management with partial TP levels
-   * 50% position closed at TP1, move stop to breakeven
-   * 30% at TP2, 20% at TP3
+   * Enhanced risk management with partial TP levels.
+   * SL/TP width adapts to volatilityRegime so stops are not hit by normal noise:
+   *   LOW     → 1.2× ATR stop,  1.5/3/5 TP
+   *   NORMAL  → 1.5× ATR stop,  1.5/3/5 TP
+   *   HIGH    → 2.0× ATR stop,  2.0/4/6 TP  (wider stops survive volatility spikes)
+   *   EXTREME → 2.5× ATR stop,  2.5/5/8 TP  (very wide; high RR compensates)
    */
-  calculateEnhancedRisk(currentPrice, signalType, atr, _positionSize = null) {
-    const atrMultiplier = 1.5;
-    // Guard: ATR of 0 or NaN makes stopLoss === currentPrice → division by zero in RRR.
-    // Fall back to 1% of current price as a safe minimum distance.
+  calculateEnhancedRisk(currentPrice, signalType, atr, _positionSize = null, volatilityRegime = 'NORMAL') {
+    const atrMultiplierMap = { LOW: 1.2, NORMAL: 1.5, HIGH: 2.0, EXTREME: 2.5 };
+    const tpMultiplierMap  = {
+      LOW:     [1.5, 3.0, 5.0],
+      NORMAL:  [1.5, 3.0, 5.0],
+      HIGH:    [2.0, 4.0, 6.0],
+      EXTREME: [2.5, 5.0, 8.0],
+    };
+
+    const atrMultiplier = atrMultiplierMap[volatilityRegime] || 1.5;
+    const [tp1M, tp2M, tp3M] = tpMultiplierMap[volatilityRegime] || tpMultiplierMap.NORMAL;
+
+    // Guard: ATR of 0 or NaN → fall back to 1% of price as minimum stop distance.
     const safeAtr = (atr && !isNaN(atr) && atr > 0) ? atr : currentPrice * 0.01;
     const stopLossDistance = safeAtr * atrMultiplier;
 
     let stopLoss, takeProfit1, takeProfit2, takeProfit3, entryZoneMin, entryZoneMax;
 
     if (signalType === 'BUY') {
-      stopLoss = currentPrice - stopLossDistance;
-      takeProfit1 = currentPrice + stopLossDistance * 1.5; // 1:1.5 RR (close 50%)
-      takeProfit2 = currentPrice + stopLossDistance * 3;   // 1:3 RR (close 30%)
-      takeProfit3 = currentPrice + stopLossDistance * 5;   // 1:5 RR (close 20%)
+      stopLoss    = currentPrice - stopLossDistance;
+      takeProfit1 = currentPrice + stopLossDistance * tp1M;
+      takeProfit2 = currentPrice + stopLossDistance * tp2M;
+      takeProfit3 = currentPrice + stopLossDistance * tp3M;
       entryZoneMin = currentPrice * 0.997;
       entryZoneMax = currentPrice * 1.003;
     } else {
-      stopLoss = currentPrice + stopLossDistance;
-      takeProfit1 = currentPrice - stopLossDistance * 1.5;
-      takeProfit2 = currentPrice - stopLossDistance * 3;
-      takeProfit3 = currentPrice - stopLossDistance * 5;
+      stopLoss    = currentPrice + stopLossDistance;
+      takeProfit1 = currentPrice - stopLossDistance * tp1M;
+      takeProfit2 = currentPrice - stopLossDistance * tp2M;
+      takeProfit3 = currentPrice - stopLossDistance * tp3M;
       entryZoneMin = currentPrice * 0.997;
       entryZoneMax = currentPrice * 1.003;
     }
 
     const riskRewardRatio = Math.abs((takeProfit2 - currentPrice) / (stopLoss - currentPrice));
 
-    // Breakeven after TP1 - move stop here
     const breakevenStop = signalType === 'BUY'
       ? currentPrice + (stopLossDistance * 0.3)
       : currentPrice - (stopLossDistance * 0.3);
 
+    const tpLabels = {
+      LOW:     ['Close 50% at TP1 (1.5R), move stop to breakeven', 'Close 30% at TP2 (3R), trail remaining', 'Exit final 20% at TP3 (5R)'],
+      NORMAL:  ['Close 50% at TP1 (1.5R), move stop to breakeven', 'Close 30% at TP2 (3R), trail remaining', 'Exit final 20% at TP3 (5R)'],
+      HIGH:    ['Close 50% at TP1 (2R) — volatile market, take profit early', 'Close 30% at TP2 (4R), trail remaining', 'Exit final 20% at TP3 (6R) if momentum holds'],
+      EXTREME: ['Close 60% at TP1 (2.5R) — extreme market, secure gains fast', 'Close 25% at TP2 (5R) with tight trail', 'Exit final 15% at TP3 (8R) — maximum RR target'],
+    };
+    const [l1, l2, l3] = tpLabels[volatilityRegime] || tpLabels.NORMAL;
+
     return {
-      stopLoss: parseFloat(stopLoss.toFixed(2)),
-      takeProfit1: parseFloat(takeProfit1.toFixed(2)),
-      takeProfit2: parseFloat(takeProfit2.toFixed(2)),
-      takeProfit3: parseFloat(takeProfit3.toFixed(2)),
-      entryZoneMin: parseFloat(entryZoneMin.toFixed(2)),
-      entryZoneMax: parseFloat(entryZoneMax.toFixed(2)),
+      stopLoss:        parseFloat(stopLoss.toFixed(2)),
+      takeProfit1:     parseFloat(takeProfit1.toFixed(2)),
+      takeProfit2:     parseFloat(takeProfit2.toFixed(2)),
+      takeProfit3:     parseFloat(takeProfit3.toFixed(2)),
+      entryZoneMin:    parseFloat(entryZoneMin.toFixed(2)),
+      entryZoneMax:    parseFloat(entryZoneMax.toFixed(2)),
       riskRewardRatio: parseFloat(riskRewardRatio.toFixed(2)),
-      breakevenStop: parseFloat(breakevenStop.toFixed(2)),
-      tradeManagement: {
-        atTP1: 'Close 50% of position, move stop to breakeven',
-        atTP2: 'Close 30% of position, trailing stop on remaining',
-        atTP3: 'Close final 20% - full position exit'
-      }
+      breakevenStop:   parseFloat(breakevenStop.toFixed(2)),
+      volatilityRegime,
+      atrMultiplierUsed: atrMultiplier,
+      tradeManagement: { atTP1: l1, atTP2: l2, atTP3: l3 },
     };
   }
 

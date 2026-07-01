@@ -113,7 +113,7 @@ const SignalCard = ({ signal }) => {
       {signal.takeProfit2 && signal.takeProfit3 && (
         <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-2">Additional Targets</p>
-          <div className="flex justify-between text-sm">
+          <div className="flex justify-between text-sm mb-2">
             <div>
               <p className="text-xs text-gray-500 dark:text-gray-400">TP2</p>
               <p className="font-semibold text-gray-900 dark:text-white">${parseFloat(signal.takeProfit2).toFixed(2)}</p>
@@ -123,6 +123,13 @@ const SignalCard = ({ signal }) => {
               <p className="font-semibold text-gray-900 dark:text-white">${parseFloat(signal.takeProfit3).toFixed(2)}</p>
             </div>
           </div>
+          {signal.reasoning?.tradeManagement && (
+            <div className="border-t border-blue-200 dark:border-blue-800 pt-2 space-y-0.5">
+              <p className="text-xs text-blue-700 dark:text-blue-300">📌 {signal.reasoning.tradeManagement.atTP1}</p>
+              <p className="text-xs text-blue-700 dark:text-blue-300">📌 {signal.reasoning.tradeManagement.atTP2}</p>
+              <p className="text-xs text-blue-700 dark:text-blue-300">📌 {signal.reasoning.tradeManagement.atTP3}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -156,6 +163,29 @@ const SignalCard = ({ signal }) => {
                       </p>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {signal.reasoning.volatility && (
+                <div className="mb-2">
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">Volatility Regime:</p>
+                  {(() => {
+                    const { regime, bbSqueeze, description } = signal.reasoning.volatility;
+                    const colors = {
+                      LOW:     'text-green-600 dark:text-green-400',
+                      NORMAL:  'text-blue-600 dark:text-blue-400',
+                      HIGH:    'text-amber-600 dark:text-amber-400',
+                      EXTREME: 'text-red-600 dark:text-red-400',
+                    };
+                    return (
+                      <>
+                        <p className={`text-xs font-bold ${colors[regime] || 'text-gray-600'}`}>
+                          • {regime}{bbSqueeze?.isSqueezing ? ` · BB ${bbSqueeze.intensity} squeeze` : ''}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">  {description}</p>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
